@@ -134,38 +134,32 @@ tr:hover { background: #f8fafc; }
     <div class="filter-grid">
       <div class="filter-group">
         <label>Customer Name</label>
-        <select id="filterCustomerName">
-          <option value="">-- All Customers --</option>
+        <select id="filterCustomerName" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>SKU</label>
-        <select id="filterSku">
-          <option value="">-- All SKUs --</option>
+        <select id="filterSku" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>Status</label>
-        <select id="filterStatus">
-          <option value="">-- All Statuses --</option>
+        <select id="filterStatus" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>Order Date</label>
-        <select id="filterOrderDate">
-          <option value="">-- All Order Dates --</option>
+        <select id="filterOrderDate" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>PO Due Date</label>
-        <select id="filterPoDueDate">
-          <option value="">-- All PO Due Dates --</option>
+        <select id="filterPoDueDate" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>Quantity</label>
-        <select id="filterQuantity">
-          <option value="">-- All Quantities --</option>
+        <select id="filterQuantity" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-actions" style="grid-column: 1 / -1;">
@@ -183,10 +177,19 @@ tr:hover { background: #f8fafc; }
     <select id="shipStatusFilter" onchange="shipStatusFilter=this.value;shipPage=1;renderShipping()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;background:#fff">
       <option value="All">All Statuses</option><option value="Sent to 3PL">Sent to 3PL</option><option value="Prepared">Prepared</option><option value="Shipped">Shipped</option><option value="Delivered">Delivered</option>
     </select>
+    <button class="btn btn-secondary" onclick="downloadShipTemplate()">&#8657; Download Template</button>
     <button class="btn btn-secondary" onclick="openShipCsvModal()">&#8659; Import CSV</button>
     <button class="btn btn-secondary" onclick="exportShipCsv()">&#8657; Export CSV</button>
   </div>
   <div id="shipping-table"></div>
+  <div class="modal-overlay" id="shipCsvModal"><div class="modal">
+  <div class="modal-header"><h2>Import Shipping Data from CSV</h2><button class="modal-close" onclick="closeShipCsvModal()">&times;</button></div>
+  <div class="modal-body">
+    <div id="shipCsvStep1"><div class="csv-drop" id="shipCsvDrop" onclick="document.getElementById('shipCsvFile').click()"><div class="icon">&#128196;</div><p>Drop a CSV file here or click to browse</p><input type="file" id="shipCsvFile" accept=".csv,.tsv,.txt"></div></div>
+    <div id="shipCsvStep2" style="display:none"><p style="font-size:12px;color:#64748b;margin-bottom:12px;">Map your CSV columns to shipping fields.</p><div id="shipCsvMappings"></div><div class="csv-preview" id="shipCsvPreview"></div></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="closeShipCsvModal()">Cancel</button><button class="btn btn-success" id="btnShipImport" style="display:none" onclick="importShipCsv()">Import Shipping Data</button></div>
+  </div></div>
 </div>
 <div class="tab-content" id="tab-refdata">
   <div style="max-width:900px;margin:0 auto;">
@@ -333,7 +336,7 @@ let orders=[],editingId=null,viewingId=null;
 let orderFilter='All',orderSearch='',orderSort='orderDate',orderSortDir=-1,orderPage=1;
 let shipSearch='',shipStatusFilter='All',shipSort='expectedShipDate',shipSortDir=-1,shipPage=1;
 let dashPeriod='weekly';const PAGE_SIZE=20;let charts={};
-let activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};
+let activeFilters={orderDate:[],poDueDate:[],customerName:[],sku:[],quantity:[],status:[]};
 let isSyncing=false;
 // ─── SHEETS API HELPERS ───────────────────────────────────────────────────────
 function sheetsConfigured(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL!=='YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';}
@@ -417,6 +420,16 @@ function formatDate(dateVal){
   const year=d.getFullYear();
   return `${month}-${day}-${year}`;
 }
+// ─── ISO DATE FORMAT FOR FILTERS ──────────────────────────────────────────────
+function formatDateISO(dateVal){
+  if(!dateVal)return'';
+  const d=new Date(dateVal);
+  if(isNaN(d.getTime()))return'';
+  const month=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  const year=d.getFullYear();
+  return `${year}-${month}-${day}`;
+}
 // ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
 function fmt(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -427,10 +440,10 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 function formatCell(field,val){if(!val)return'—';if(field==='totalValue'||field==='unitPrice')return'$'+fmt(parseFloat(val)||0);if(field==='status')return`<span class="status-badge badge-${sKey(val)}">${val}</span>`;return esc(val);}
 function sortCompare(a,b,field,dir){let va=a[field]||'',vb=b[field]||'';if(['totalValue','quantity','unitPrice'].includes(field)){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}else if(field==='status'){va=STATUSES.indexOf(va);vb=STATUSES.indexOf(vb);}else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}return va<vb?-dir:va>vb?dir:0;}
 function toggleFilterPanel(){document.getElementById('filterPanel').style.display=document.getElementById('filterPanel').style.display==='none'?'block':'none';populateFilterDropdowns();}
-function populateFilterDropdowns(){const customers=new Set(),skus=new Set(),statuses=new Set(),orderDates=new Set(),poDueDates=new Set(),quantities=new Set();orders.forEach(o=>{if(o.customerName)customers.add(o.customerName);if(o.sku)skus.add(o.sku);if(o.status)statuses.add(o.status);if(o.orderDate)orderDates.add(o.orderDate);if(o.poDueDate)poDueDates.add(o.poDueDate);if(o.quantity)quantities.add(o.quantity);});const custSel=document.getElementById('filterCustomerName');const skuSel=document.getElementById('filterSku');const statSel=document.getElementById('filterStatus');const orderDateSel=document.getElementById('filterOrderDate');const poDueDateSel=document.getElementById('filterPoDueDate');const qtySel=document.getElementById('filterQuantity');const curCust=custSel.value,curSku=skuSel.value,curStat=statSel.value,curOrderDate=orderDateSel.value,curPoDueDate=poDueDateSel.value,curQty=qtySel.value;custSel.innerHTML='<option value="">-- All Customers --</option>';Array.from(customers).sort().forEach(c=>{custSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});custSel.value=curCust;skuSel.innerHTML='<option value="">-- All SKUs --</option>';Array.from(skus).sort().forEach(s=>{skuSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});skuSel.value=curSku;statSel.innerHTML='<option value="">-- All Statuses --</option>';STATUSES.forEach(s=>{if(statuses.has(s))statSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});statSel.value=curStat;orderDateSel.innerHTML='<option value="">-- All Order Dates --</option>';Array.from(orderDates).sort().forEach(d=>{orderDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});orderDateSel.value=curOrderDate;poDueDateSel.innerHTML='<option value="">-- All PO Due Dates --</option>';Array.from(poDueDates).sort().forEach(d=>{poDueDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});poDueDateSel.value=curPoDueDate;qtySel.innerHTML='<option value="">-- All Quantities --</option>';Array.from(quantities).sort((a,b)=>parseFloat(a)-parseFloat(b)).forEach(q=>{qtySel.appendChild(Object.assign(document.createElement('option'),{value:q,textContent:q}));});qtySel.value=curQty;}
-function applyFilters(){activeFilters.customerName=document.getElementById('filterCustomerName').value;activeFilters.sku=document.getElementById('filterSku').value;activeFilters.status=document.getElementById('filterStatus').value;activeFilters.orderDate=document.getElementById('filterOrderDate').value;activeFilters.poDueDate=document.getElementById('filterPoDueDate').value;activeFilters.quantity=document.getElementById('filterQuantity').value;orderPage=1;renderOrders();toast('Filters applied');}
-function clearFilters(){activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};document.getElementById('filterOrderDate').value='';document.getElementById('filterPoDueDate').value='';document.getElementById('filterCustomerName').value='';document.getElementById('filterSku').value='';document.getElementById('filterQuantity').value='';document.getElementById('filterStatus').value='';orderPage=1;renderOrders();toast('Filters cleared');}
-function applyActiveFilters(list){if(activeFilters.customerName){list=list.filter(o=>o.customerName===activeFilters.customerName);}if(activeFilters.sku){list=list.filter(o=>o.sku===activeFilters.sku);}if(activeFilters.status){list=list.filter(o=>o.status===activeFilters.status);}if(activeFilters.orderDate){list=list.filter(o=>o.orderDate===activeFilters.orderDate);}if(activeFilters.poDueDate){list=list.filter(o=>o.poDueDate===activeFilters.poDueDate);}if(activeFilters.quantity){list=list.filter(o=>o.quantity===activeFilters.quantity);}return list;}
+function populateFilterDropdowns(){const customers=new Set(),skus=new Set(),statuses=new Set(),orderDates=new Map(),poDueDates=new Map(),quantities=new Set();orders.forEach(o=>{if(o.customerName)customers.add(o.customerName);if(o.sku)skus.add(o.sku);if(o.status)statuses.add(o.status);if(o.orderDate){const isoDate=formatDateISO(o.orderDate);orderDates.set(isoDate,formatDate(o.orderDate));}if(o.poDueDate){const isoDate=formatDateISO(o.poDueDate);poDueDates.set(isoDate,formatDate(o.poDueDate));}if(o.quantity)quantities.add(o.quantity);});const custSel=document.getElementById('filterCustomerName');const skuSel=document.getElementById('filterSku');const statSel=document.getElementById('filterStatus');const orderDateSel=document.getElementById('filterOrderDate');const poDueDateSel=document.getElementById('filterPoDueDate');const qtySel=document.getElementById('filterQuantity');const curCust=custSel.value,curSku=skuSel.value,curStat=statSel.value,curOrderDate=orderDateSel.value,curPoDueDate=poDueDateSel.value,curQty=qtySel.value;custSel.innerHTML='<option value="">-- All Customers --</option>';Array.from(customers).sort().forEach(c=>{custSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});custSel.value=curCust;skuSel.innerHTML='<option value="">-- All SKUs --</option>';Array.from(skus).sort().forEach(s=>{skuSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});skuSel.value=curSku;statSel.innerHTML='<option value="">-- All Statuses --</option>';STATUSES.forEach(s=>{if(statuses.has(s))statSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});statSel.value=curStat;orderDateSel.innerHTML='<option value="">-- All Order Dates --</option>';Array.from(orderDates.keys()).sort().forEach(d=>{orderDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:orderDates.get(d)}));});orderDateSel.value=curOrderDate;poDueDateSel.innerHTML='<option value="">-- All PO Due Dates --</option>';Array.from(poDueDates.keys()).sort().forEach(d=>{poDueDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:poDueDates.get(d)}));});poDueDateSel.value=curPoDueDate;qtySel.innerHTML='<option value="">-- All Quantities --</option>';Array.from(quantities).sort((a,b)=>parseFloat(a)-parseFloat(b)).forEach(q=>{qtySel.appendChild(Object.assign(document.createElement('option'),{value:q,textContent:q}));});qtySel.value=curQty;}
+function applyFilters(){activeFilters.customerName=Array.from(document.getElementById('filterCustomerName').selectedOptions).map(o=>o.value);activeFilters.sku=Array.from(document.getElementById('filterSku').selectedOptions).map(o=>o.value);activeFilters.status=Array.from(document.getElementById('filterStatus').selectedOptions).map(o=>o.value);activeFilters.orderDate=Array.from(document.getElementById('filterOrderDate').selectedOptions).map(o=>o.value);activeFilters.poDueDate=Array.from(document.getElementById('filterPoDueDate').selectedOptions).map(o=>o.value);activeFilters.quantity=Array.from(document.getElementById('filterQuantity').selectedOptions).map(o=>o.value);orderPage=1;renderOrders();toast('Filters applied');}
+function clearFilters(){activeFilters={orderDate:[],poDueDate:[],customerName:[],sku:[],quantity:[],status:[]};document.getElementById('filterOrderDate').selectedIndex=-1;document.getElementById('filterPoDueDate').selectedIndex=-1;document.getElementById('filterCustomerName').selectedIndex=-1;document.getElementById('filterSku').selectedIndex=-1;document.getElementById('filterQuantity').selectedIndex=-1;document.getElementById('filterStatus').selectedIndex=-1;Array.from(document.getElementById('filterOrderDate').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterPoDueDate').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterCustomerName').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterSku').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterQuantity').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterStatus').options).forEach(o=>o.selected=false);orderPage=1;renderOrders();toast('Filters cleared');}
+function applyActiveFilters(list){if(activeFilters.customerName&&activeFilters.customerName.length>0){list=list.filter(o=>activeFilters.customerName.includes(o.customerName));}if(activeFilters.sku&&activeFilters.sku.length>0){list=list.filter(o=>activeFilters.sku.includes(o.sku));}if(activeFilters.status&&activeFilters.status.length>0){list=list.filter(o=>activeFilters.status.includes(o.status));}if(activeFilters.orderDate&&activeFilters.orderDate.length>0){list=list.filter(o=>activeFilters.orderDate.includes(formatDateISO(o.orderDate)));}if(activeFilters.poDueDate&&activeFilters.poDueDate.length>0){list=list.filter(o=>activeFilters.poDueDate.includes(formatDateISO(o.poDueDate)));}if(activeFilters.quantity&&activeFilters.quantity.length>0){list=list.filter(o=>activeFilters.quantity.includes(o.quantity));}return list;}
 function renderOrders(){
   const sc={};STATUSES.forEach(s=>sc[s]=0);orders.forEach(o=>{if(sc[o.status]!==undefined)sc[o.status]++;});
   const tv=orders.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);
@@ -606,6 +619,7 @@ async function importShipCsv(){
   shipCsvHeaders.forEach((h,i)=>{const sel=document.getElementById('smap_'+i);if(sel&&sel.value)mapping[i]=sel.value;});
   let updated=0,skipped=0;
   const updatedOrders=[];
+  const shippingData=[];
   shipCsvData.forEach(row=>{
     const data={};
     for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}
@@ -614,6 +628,7 @@ async function importShipCsv(){
     if(idx<0){skipped++;return;}
     orders[idx]={...orders[idx],...data,_updated:new Date().toISOString()};
     updatedOrders.push(orders[idx]);
+    shippingData.push(data);
     updated++;
   });
   saveLocal();
@@ -624,6 +639,7 @@ async function importShipCsv(){
     try{
       isSyncing=true;
       showSyncIndicator('Syncing shipping to Google Sheets…',false);
+      const r=await sheetsPost({action:'syncShipping',shipping:shippingData});
       for(const o of updatedOrders){await sheetsPost({action:'updateOrder',order:o});}
       isSyncing=false;
       showSyncIndicator(`Synced ${updated} shipment(s) to Sheets`,false);
