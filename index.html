@@ -306,7 +306,6 @@ tr:hover { background: #f8fafc; }
 <datalist id="dl_customers"></datalist>
 <datalist id="dl_carriers"></datalist>
 <datalist id="dl_warehouses"></datalist>
-
 <!-- Shipping CSV Import Modal -->
 <div class="modal-overlay" id="shipCsvModal"><div class="modal">
 <div class="modal-header"><h2>Import / Update Shipping from CSV</h2><button class="modal-close" onclick="closeShipCsvModal()">&times;</button></div>
@@ -318,13 +317,10 @@ tr:hover { background: #f8fafc; }
 </div>
 <div class="modal-footer"><button class="btn btn-secondary" onclick="closeShipCsvModal()">Cancel</button><button class="btn btn-success" id="btnShipImport" style="display:none" onclick="importShipCsv()">Update Shipping</button></div>
 </div></div>
-
 <div class="toast" id="toast"></div>
 <script>
 // ─── GOOGLE SHEETS CONFIG ─────────────────────────────────────────────────────
-// After deploying your Apps Script Web App, paste the URL below:
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwhd8ktTaktZ708GrqYINPVWZffbehwxVV_Rt-yvWOLsvSRp-YrDoiDAOMZtNI0VSh9/exec';
-
 const STORAGE_KEY='sales_orders_v2';
 const STATUSES=['Received','Approved','Sent to 3PL','Prepared','Shipped','Delivered','Invoiced'];
 const STATUS_KEYS=['received','approved','sent-to-3pl','prepared','shipped','delivered','invoiced'];
@@ -333,22 +329,18 @@ const FIELDS=['orderId','orderDate','customerName','deliveryCity','status','sku'
 const FIELD_LABELS={orderId:'Order ID',orderDate:'Order Date',customerName:'Customer Name (Retailer)',deliveryCity:'Delivery City',status:'Status',sku:'SKU',quantity:'Quantity',unitPrice:'Unit Price',totalValue:'Total Value (Gross)',poDueDate:'PO Due Date',routingDueDate:'Routing Due Date',invoiceNumber:'Invoice #',invoiceDate:'Invoice Date',sentToWarehouseDate:'Sent to Warehouse',warehouseName:'Warehouse Name',expectedShipDate:'Expected Ship',expectedDeliveryDate:'Expected Delivery',carrierName:'Carrier Name',carrierTracking:'Carrier Tracking #',carrierTrackingUrl:'Tracking URL',actualShipDate:'Actual Ship Date',actualDeliveryDate:'Actual Delivery Date'};
 const ORDER_TABLE_FIELDS=['orderId','orderDate','customerName','deliveryCity','sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate','invoiceNumber','invoiceDate'];
 const SHIP_TABLE_FIELDS=['orderId','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','carrierTrackingUrl','actualShipDate','actualDeliveryDate'];
-
 let orders=[],editingId=null,viewingId=null;
 let orderFilter='All',orderSearch='',orderSort='orderDate',orderSortDir=-1,orderPage=1;
 let shipSearch='',shipStatusFilter='All',shipSort='expectedShipDate',shipSortDir=-1,shipPage=1;
 let dashPeriod='weekly';const PAGE_SIZE=20;let charts={};
 let activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};
 let isSyncing=false;
-
 // ─── SHEETS API HELPERS ───────────────────────────────────────────────────────
 function sheetsConfigured(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL!=='YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';}
-
 async function sheetsGet(){
   const res=await fetch(APPS_SCRIPT_URL+'?action=getAll',{redirect:'follow'});
   return res.json();
 }
-
 async function sheetsPost(payload){
   const res=await fetch(APPS_SCRIPT_URL,{
     method:'POST',
@@ -358,7 +350,6 @@ async function sheetsPost(payload){
   });
   return res.json();
 }
-
 function showSyncIndicator(msg,isError){
   let el=document.getElementById('syncIndicator');
   if(!el){
@@ -374,19 +365,15 @@ function showSyncIndicator(msg,isError){
   el.innerHTML=`<span>${isSyncing?'⟳':'✓'}</span> ${msg}`;
   if(!isSyncing)setTimeout(()=>{el.style.opacity='0';},2500);
 }
-
 // ─── DATA LOAD / SAVE ────────────────────────────────────────────────────────
 function genId(){return'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,6);}
-
-// Local cache (fallback + instant rendering)
 function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(orders));localStorage.setItem('sales_refdata_v1',JSON.stringify(refData));}
 function loadLocal(){
   try{let d=localStorage.getItem(STORAGE_KEY);if(!d)d=localStorage.getItem('sales_orders_v1');orders=d?JSON.parse(d):[];}catch(e){orders=[];}
   try{const d=localStorage.getItem('sales_refdata_v1');if(d)refData=JSON.parse(d);}catch(e){}
 }
-
 async function load(){
-  loadLocal(); // show cached data immediately
+  loadLocal();
   renderAll();
   if(!sheetsConfigured()){
     showSyncIndicator('Google Sheets not connected',true);
@@ -417,14 +404,20 @@ async function load(){
     console.error('Sheets load error:',err);
   }
 }
-
 async function save(){
-  saveLocal(); // always keep local cache fresh
-  // (individual create/update/delete handle sheet writes)
+  saveLocal();
 }
-
-// Tab handler moved to bottom of script (supports refdata tab)
-
+// ─── DATE FORMATTING FUNCTION ─────────────────────────────────────────────────
+function formatDate(dateVal){
+  if(!dateVal)return'—';
+  const d=new Date(dateVal);
+  if(isNaN(d.getTime()))return'—';
+  const month=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  const year=d.getFullYear();
+  return `${month}-${day}-${year}`;
+}
+// ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
 function fmt(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function sKey(s){return(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');}
@@ -433,13 +426,11 @@ function sIcon(f,sf,sd){return sf===f?(sd===1?'&#9650;':'&#9660;'):'';}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 function formatCell(field,val){if(!val)return'—';if(field==='totalValue'||field==='unitPrice')return'$'+fmt(parseFloat(val)||0);if(field==='status')return`<span class="status-badge badge-${sKey(val)}">${val}</span>`;return esc(val);}
 function sortCompare(a,b,field,dir){let va=a[field]||'',vb=b[field]||'';if(['totalValue','quantity','unitPrice'].includes(field)){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}else if(field==='status'){va=STATUSES.indexOf(va);vb=STATUSES.indexOf(vb);}else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}return va<vb?-dir:va>vb?dir:0;}
-
 function toggleFilterPanel(){document.getElementById('filterPanel').style.display=document.getElementById('filterPanel').style.display==='none'?'block':'none';populateFilterDropdowns();}
 function populateFilterDropdowns(){const customers=new Set(),skus=new Set(),statuses=new Set(),orderDates=new Set(),poDueDates=new Set(),quantities=new Set();orders.forEach(o=>{if(o.customerName)customers.add(o.customerName);if(o.sku)skus.add(o.sku);if(o.status)statuses.add(o.status);if(o.orderDate)orderDates.add(o.orderDate);if(o.poDueDate)poDueDates.add(o.poDueDate);if(o.quantity)quantities.add(o.quantity);});const custSel=document.getElementById('filterCustomerName');const skuSel=document.getElementById('filterSku');const statSel=document.getElementById('filterStatus');const orderDateSel=document.getElementById('filterOrderDate');const poDueDateSel=document.getElementById('filterPoDueDate');const qtySel=document.getElementById('filterQuantity');const curCust=custSel.value,curSku=skuSel.value,curStat=statSel.value,curOrderDate=orderDateSel.value,curPoDueDate=poDueDateSel.value,curQty=qtySel.value;custSel.innerHTML='<option value="">-- All Customers --</option>';Array.from(customers).sort().forEach(c=>{custSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});custSel.value=curCust;skuSel.innerHTML='<option value="">-- All SKUs --</option>';Array.from(skus).sort().forEach(s=>{skuSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});skuSel.value=curSku;statSel.innerHTML='<option value="">-- All Statuses --</option>';STATUSES.forEach(s=>{if(statuses.has(s))statSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});statSel.value=curStat;orderDateSel.innerHTML='<option value="">-- All Order Dates --</option>';Array.from(orderDates).sort().forEach(d=>{orderDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});orderDateSel.value=curOrderDate;poDueDateSel.innerHTML='<option value="">-- All PO Due Dates --</option>';Array.from(poDueDates).sort().forEach(d=>{poDueDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});poDueDateSel.value=curPoDueDate;qtySel.innerHTML='<option value="">-- All Quantities --</option>';Array.from(quantities).sort((a,b)=>parseFloat(a)-parseFloat(b)).forEach(q=>{qtySel.appendChild(Object.assign(document.createElement('option'),{value:q,textContent:q}));});qtySel.value=curQty;}
 function applyFilters(){activeFilters.customerName=document.getElementById('filterCustomerName').value;activeFilters.sku=document.getElementById('filterSku').value;activeFilters.status=document.getElementById('filterStatus').value;activeFilters.orderDate=document.getElementById('filterOrderDate').value;activeFilters.poDueDate=document.getElementById('filterPoDueDate').value;activeFilters.quantity=document.getElementById('filterQuantity').value;orderPage=1;renderOrders();toast('Filters applied');}
 function clearFilters(){activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};document.getElementById('filterOrderDate').value='';document.getElementById('filterPoDueDate').value='';document.getElementById('filterCustomerName').value='';document.getElementById('filterSku').value='';document.getElementById('filterQuantity').value='';document.getElementById('filterStatus').value='';orderPage=1;renderOrders();toast('Filters cleared');}
 function applyActiveFilters(list){if(activeFilters.customerName){list=list.filter(o=>o.customerName===activeFilters.customerName);}if(activeFilters.sku){list=list.filter(o=>o.sku===activeFilters.sku);}if(activeFilters.status){list=list.filter(o=>o.status===activeFilters.status);}if(activeFilters.orderDate){list=list.filter(o=>o.orderDate===activeFilters.orderDate);}if(activeFilters.poDueDate){list=list.filter(o=>o.poDueDate===activeFilters.poDueDate);}if(activeFilters.quantity){list=list.filter(o=>o.quantity===activeFilters.quantity);}return list;}
-
 function renderOrders(){
   const sc={};STATUSES.forEach(s=>sc[s]=0);orders.forEach(o=>{if(sc[o.status]!==undefined)sc[o.status]++;});
   const tv=orders.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);
@@ -453,16 +444,13 @@ function renderOrders(){
   list.sort((a,b)=>sortCompare(a,b,orderSort,orderSortDir));
   const tp=Math.max(1,Math.ceil(list.length/PAGE_SIZE));if(orderPage>tp)orderPage=tp;const page=list.slice((orderPage-1)*PAGE_SIZE,orderPage*PAGE_SIZE);
   if(list.length===0){document.getElementById('orders-table').innerHTML=`<div class="empty"><div class="icon">&#128230;</div><p>${orders.length===0?'No orders yet. Create one or import from CSV.':'No orders match your filters.'}</p></div>`;return;}
-  document.getElementById('orders-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${ORDER_TABLE_FIELDS.map(f=>`<th onclick="toggleOSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,orderSort,orderSortDir)}</th>`).join('')}<th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr>${ORDER_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f==='totalValue')return`<td style="font-weight:600">${formatCell(f,o[f])}</td>`;return`<td>${formatCell(f,o[f])}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button><button class="btn btn-danger btn-xs" onclick="deleteOrder('${o._id}')" title="Delete">&#10005;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(orderPage-1)*PAGE_SIZE+1}–${Math.min(orderPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${orderPage<=1?'disabled':''} onclick="orderPage--;renderOrders()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${orderPage>=tp?'disabled':''} onclick="orderPage++;renderOrders()">Next &#8594;</button></div></div>`;
+  document.getElementById('orders-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${ORDER_TABLE_FIELDS.map(f=>`<th onclick="toggleOSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,orderSort,orderSortDir)}</th>`).join('')}<th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr>${ORDER_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f.includes('Date'))return`<td>${formatDate(o[f])}</td>`;if(f==='totalValue')return`<td style="font-weight:600">${formatCell(f,o[f])}</td>`;return`<td>${formatCell(f,o[f])}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button><button class="btn btn-danger btn-xs" onclick="deleteOrder('${o._id}')" title="Delete">&#10005;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(orderPage-1)*PAGE_SIZE+1}–${Math.min(orderPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${orderPage<=1?'disabled':''} onclick="orderPage--;renderOrders()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${orderPage>=tp?'disabled':''} onclick="orderPage++;renderOrders()">Next &#8594;</button></div></div>`;
 }
 function toggleOSort(f){if(orderSort===f)orderSortDir*=-1;else{orderSort=f;orderSortDir=1;}renderOrders();}
-
 function toggleSSort(f){if(shipSort===f)shipSortDir*=-1;else{shipSort=f;shipSortDir=1;}renderShipping();}
-
 function setPeriod(p){dashPeriod=p;document.querySelectorAll('.period-btn').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase()===p));dashFilter=null;if(document.getElementById('dashFilterSel'))document.getElementById('dashFilterSel').value='';renderDashboard();}
 function getTimeBuckets(period){const b=[];const now=new Date();if(period==='weekly'){for(let i=7;i>=0;i--){const s=new Date(now);s.setDate(now.getDate()-i*7);const e=new Date(s);e.setDate(s.getDate()+6);b.push({start:s,end:e,label:`Wk ${s.getMonth()+1}/${s.getDate()}`});}}else{for(let i=5;i>=0;i--){const s=new Date(now.getFullYear(),now.getMonth()-i,1);const e=new Date(now.getFullYear(),now.getMonth()-i+1,0);b.push({start:s,end:e,label:s.toLocaleString('en-US',{month:'short',year:'2-digit'})});}}return b;}
 function isInBucket(ds,b){const d=new Date(ds);return d>=b.start&&d<=b.end;}
-
 function openNewOrder(){editingId=null;clearForm();document.getElementById('modalTitle').textContent='New Order';document.getElementById('f_orderDate').value=new Date().toISOString().split('T')[0];document.getElementById('f_status').value='Received';document.getElementById('orderModal').classList.add('open');}
 function editOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;editingId=id;FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el){let val=o[f]||'';if(f.includes('Date')&&val){const d=new Date(val);if(!isNaN(d))val=d.toISOString().split('T')[0];}el.value=val;}});document.getElementById('modalTitle').textContent='Edit Order';document.getElementById('orderModal').classList.add('open');}
 function closeModal(){document.getElementById('orderModal').classList.remove('open');}
@@ -472,13 +460,11 @@ async function deleteOrder(id){if(!confirm('Delete this order?'))return;orders=o
 async function advanceStatus(id){const o=orders.find(x=>x._id===id);if(!o)return;const ns=nextSt(o.status);if(ns){o.status=ns;o._updated=new Date().toISOString();saveLocal();renderAll();toast(`Status → ${ns}`);if(sheetsConfigured()){try{isSyncing=true;showSyncIndicator('Updating Google Sheets…',false);const r=await sheetsPost({action:'updateOrder',order:o});isSyncing=false;if(r.ok)showSyncIndicator('Saved to Google Sheets',false);else showSyncIndicator('Sheet update failed: '+(r.error||'unknown'),true);}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}}
 document.getElementById('f_quantity').addEventListener('input',autoCalc);document.getElementById('f_unitPrice').addEventListener('input',autoCalc);
 function autoCalc(){const q=parseFloat(document.getElementById('f_quantity').value)||0,p=parseFloat(document.getElementById('f_unitPrice').value)||0;if(q&&p)document.getElementById('f_totalValue').value=(q*p).toFixed(2);}
-
 function viewOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;viewingId=id;document.getElementById('viewTitle').textContent=`Order ${o.orderId}`;const ci=STATUSES.indexOf(o.status);let html='<div style="display:flex;gap:2px;margin-bottom:16px;flex-wrap:wrap">';STATUSES.forEach((s,i)=>{const done=i<=ci;html+=`<div style="padding:4px 10px;border-radius:12px;font-size:10px;font-weight:600;${done?'background:#6366f1;color:#fff':'background:#f1f5f9;color:#94a3b8'}">${s}</div>`;});html+='</div>';
-[{title:'Order Details',fields:['orderId','orderDate','customerName','deliveryCity']},{title:'Product & Financials',fields:['sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate']},{title:'Invoice',fields:['invoiceNumber','invoiceDate']},{title:'Shipping & Logistics',fields:['sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate']}].forEach(sec=>{html+=`<div class="form-section"><h3>${sec.title}</h3><div class="form-grid">`;sec.fields.forEach(f=>{let val=o[f]||'—';if((f==='totalValue'||f==='unitPrice')&&o[f])val='$'+fmt(parseFloat(o[f]));html+=`<div class="form-group"><label>${FIELD_LABELS[f]}</label><div style="padding:5px 0;font-size:13px">${esc(String(val))}</div></div>`;});html+='</div></div>';});
+[{title:'Order Details',fields:['orderId','orderDate','customerName','deliveryCity']},{title:'Product & Financials',fields:['sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate']},{title:'Invoice',fields:['invoiceNumber','invoiceDate']},{title:'Shipping & Logistics',fields:['sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate']}].forEach(sec=>{html+=`<div class="form-section"><h3>${sec.title}</h3><div class="form-grid">`;sec.fields.forEach(f=>{let val=o[f]||'—';if((f==='totalValue'||f==='unitPrice')&&o[f])val='$'+fmt(parseFloat(o[f]));if(f.includes('Date')&&o[f])val=formatDate(o[f]);html+=`<div class="form-group"><label>${FIELD_LABELS[f]}</label><div style="padding:5px 0;font-size:13px">${esc(String(val))}</div></div>`;});html+='</div></div>';});
 document.getElementById('viewBody').innerHTML=html;document.getElementById('viewModal').classList.add('open');}
 function closeViewModal(){document.getElementById('viewModal').classList.remove('open');}
 function editFromView(){closeViewModal();editOrder(viewingId);}
-
 let csvData=[],csvHeaders=[];
 function openCsvModal(){csvData=[];csvHeaders=[];document.getElementById('csvStep1').style.display='';document.getElementById('csvStep2').style.display='none';document.getElementById('btnImport').style.display='none';document.getElementById('csvFile').value='';document.getElementById('csvModal').classList.add('open');}
 function closeCsvModal(){document.getElementById('csvModal').classList.remove('open');}
@@ -494,19 +480,13 @@ csvHeaders.forEach((h,i)=>{const hl=h.toLowerCase().trim();for(const[f,a]of Obje
 let html='';csvHeaders.forEach((h,i)=>{html+=`<div class="mapping-row"><label>${esc(h)}</label><select id="map_${i}"><option value="">— Skip —</option>`;FIELDS.forEach(f=>{html+=`<option value="${f}" ${gm[i]===f?'selected':''}>${FIELD_LABELS[f]}</option>`;});html+='</select></div>';});document.getElementById('csvMappings').innerHTML=html;
 let prev='<table><thead><tr>'+csvHeaders.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>';csvData.slice(0,5).forEach(row=>{prev+='<tr>'+row.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>';});prev+='</tbody></table>';if(csvData.length>5)prev+=`<p style="color:#94a3b8;margin-top:4px">...and ${csvData.length-5} more rows</p>`;document.getElementById('csvPreview').innerHTML=prev;}
 async function importCsv(){const mapping={};csvHeaders.forEach((h,i)=>{const sel=document.getElementById('map_'+i);if(sel&&sel.value)mapping[i]=sel.value;});let imp=0;csvData.forEach(row=>{const data={_id:genId(),_created:new Date().toISOString(),_updated:'',status:'Received'};for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}if(data.orderId||data.customerName){orders.unshift(data);imp++;}});saveLocal();closeCsvModal();populateFilterDropdowns();renderAll();toast(`Imported ${imp} orders`);if(sheetsConfigured()&&imp>0){try{isSyncing=true;showSyncIndicator('Syncing to Google Sheets…',false);const r=await sheetsPost({action:'syncOrders',orders});isSyncing=false;if(r.ok)showSyncIndicator(`Synced ${imp} orders to Sheets`,false);else showSyncIndicator('Sync failed: '+(r.error||'unknown'),true);}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}
-
 function toggleExport(){document.getElementById('exportMenu').classList.toggle('show');}
 document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document.getElementById('exportMenu')?.classList.remove('show');});
-function exportCsv(){const rows=[FIELDS.map(f=>FIELD_LABELS[f]).join(',')];orders.forEach(o=>{rows.push(FIELDS.map(f=>`"${(o[f]||'').toString().replace(/"/g,'""')}"`).join(','));});downloadFile(rows.join('\n'),'orders_export.csv','text/csv');toast('CSV exported');}
+function exportCsv(){const rows=[[...FIELDS].map(f=>FIELD_LABELS[f]).join(',')];orders.forEach(o=>{rows.push(FIELDS.map(f=>`"${(o[f]||'').toString().replace(/"/g,'""')}"`).join(','));});downloadFile(rows.join('\n'),'orders_export.csv','text/csv');toast('CSV exported');}
 function exportJson(){downloadFile(JSON.stringify(orders,null,2),'orders_export.json','application/json');toast('JSON exported');}
 function downloadFile(content,name,type){const b=new Blob([content],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();URL.revokeObjectURL(a.href);}
-
 function renderAll(){renderOrders();renderShipping();if(document.getElementById('tab-dashboard').classList.contains('active'))renderDashboard();updateDataLists();}
-
-// ─── REFERENCE DATA ──────────────────────────────────────────────────────────
 let refData={skus:[],customers:[],carriers:[],warehouses:[]};
-
-function loadRefData(){} // now handled in load() via Sheets
 async function saveRefData(){
   localStorage.setItem('sales_refdata_v1',JSON.stringify(refData));
   if(sheetsConfigured()){
@@ -520,7 +500,6 @@ async function saveRefData(){
     }catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}
   }
 }
-
 async function addRefItem(cat,inputId){
   const inp=document.getElementById(inputId);
   const val=(inp.value||'').trim();
@@ -533,14 +512,12 @@ async function addRefItem(cat,inputId){
   updateDataLists();
   await saveRefData();
 }
-
 async function removeRefItem(cat,val){
   refData[cat]=refData[cat].filter(x=>x!==val);
   renderRefData();
   updateDataLists();
   await saveRefData();
 }
-
 function renderRefData(){
   const cats={skus:'list_skus',customers:'list_customers',carriers:'list_carriers',warehouses:'list_warehouses'};
   for(const[cat,listId]of Object.entries(cats)){
@@ -550,7 +527,6 @@ function renderRefData(){
     ul.innerHTML=refData[cat].map(v=>`<li style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px;"><span>${esc(v)}</span><button class="btn btn-danger btn-xs" onclick="removeRefItem('${cat}','${v.replace(/'/g,"\\'")}')">&#10005;</button></li>`).join('');
   }
 }
-
 function updateDataLists(){
   const map={dl_skus:'skus',dl_customers:'customers',dl_carriers:'carriers',dl_warehouses:'warehouses'};
   for(const[dlId,cat]of Object.entries(map)){
@@ -559,8 +535,6 @@ function updateDataLists(){
     dl.innerHTML=refData[cat].map(v=>`<option value="${esc(v)}">`).join('');
   }
 }
-
-// Enter key support for ref data inputs
 ['new_sku','new_customers','new_carriers','new_warehouses'].forEach(id=>{
   document.addEventListener('DOMContentLoaded',()=>{});
   setTimeout(()=>{
@@ -571,25 +545,19 @@ function updateDataLists(){
     }
   },100);
 });
-
-// ─── SHIPPING CSV IMPORT/EXPORT ──────────────────────────────────────────────
 const SHIP_FIELDS=['orderId','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','carrierTrackingUrl','actualShipDate','actualDeliveryDate','status'];
-
 function exportShipCsv(){
   const rows=[SHIP_FIELDS.map(f=>FIELD_LABELS[f]||f).join(',')];
   orders.forEach(o=>{rows.push(SHIP_FIELDS.map(f=>`"${(o[f]||'').toString().replace(/"/g,'""')}"`).join(','));});
   downloadFile(rows.join('\n'),'shipping_export.csv','text/csv');
   toast('Shipping CSV exported');
 }
-
 function downloadShipTemplate(){
   const rows=[SHIP_FIELDS.map(f=>FIELD_LABELS[f]||f).join(','),'ORD-001,2024-01-10,Warehouse A,2024-01-12,2024-01-15,FedEx,1Z999AA10123456784,https://www.fedex.com/fedextrack/?trknbr=1Z999AA10123456784,2024-01-12,2024-01-15,Shipped'];
   downloadFile(rows.join('\n'),'shipping_template.csv','text/csv');
   toast('Template downloaded');
 }
-
 let shipCsvData=[],shipCsvHeaders=[];
-
 function openShipCsvModal(){
   shipCsvData=[];shipCsvHeaders=[];
   document.getElementById('shipCsvStep1').style.display='';
@@ -599,13 +567,11 @@ function openShipCsvModal(){
   document.getElementById('shipCsvModal').classList.add('open');
 }
 function closeShipCsvModal(){document.getElementById('shipCsvModal').classList.remove('open');}
-
 const shipCsvDrop=document.getElementById('shipCsvDrop');
 shipCsvDrop.addEventListener('dragover',e=>{e.preventDefault();shipCsvDrop.classList.add('dragover');});
 shipCsvDrop.addEventListener('dragleave',()=>shipCsvDrop.classList.remove('dragover'));
 shipCsvDrop.addEventListener('drop',e=>{e.preventDefault();shipCsvDrop.classList.remove('dragover');if(e.dataTransfer.files[0])parseShipCsvFile(e.dataTransfer.files[0]);});
 document.getElementById('shipCsvFile').addEventListener('change',e=>{if(e.target.files[0])parseShipCsvFile(e.target.files[0]);});
-
 function parseShipCsvFile(file){
   const r=new FileReader();
   r.onload=e=>{
@@ -619,7 +585,6 @@ function parseShipCsvFile(file){
   };
   r.readAsText(file);
 }
-
 function showShipMappings(){
   document.getElementById('shipCsvStep1').style.display='none';
   document.getElementById('shipCsvStep2').style.display='';
@@ -636,7 +601,6 @@ function showShipMappings(){
   if(shipCsvData.length>5)prev+=`<p style="color:#94a3b8;margin-top:4px">...and ${shipCsvData.length-5} more rows</p>`;
   document.getElementById('shipCsvPreview').innerHTML=prev;
 }
-
 async function importShipCsv(){
   const mapping={};
   shipCsvHeaders.forEach((h,i)=>{const sel=document.getElementById('smap_'+i);if(sel&&sel.value)mapping[i]=sel.value;});
@@ -660,19 +624,14 @@ async function importShipCsv(){
     try{
       isSyncing=true;
       showSyncIndicator('Syncing shipping to Google Sheets…',false);
-      // Update each changed order individually
       for(const o of updatedOrders){await sheetsPost({action:'updateOrder',order:o});}
       isSyncing=false;
       showSyncIndicator(`Synced ${updated} shipment(s) to Sheets`,false);
     }catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}
   }
 }
-
-// ─── DASHBOARD FILTER ────────────────────────────────────────────────────────
-let dashFilter=null; // {type:'month'|'week', year:YYYY, month:MM} or {type:'week', year:YYYY, week:WW}
-
+let dashFilter=null;
 function getWeekNumber(d){const date=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const dayNum=date.getUTCDay()||7;date.setUTCDate(date.getUTCDate()+4-dayNum);const yearStart=new Date(Date.UTC(date.getUTCFullYear(),0,1));return Math.ceil((((date-yearStart)/86400000)+1)/7);}
-
 function populateDashFilter(){
   const sel=document.getElementById('dashFilterSel');
   if(!sel)return;
@@ -705,7 +664,6 @@ function populateDashFilter(){
   }
   if(cur)sel.value=cur;
 }
-
 function onDashFilterChange(){
   const val=document.getElementById('dashFilterSel').value;
   if(!val){dashFilter=null;}
@@ -716,9 +674,7 @@ function onDashFilterChange(){
   }
   renderDashboard();
 }
-
 function clearDashFilter(){dashFilter=null;document.getElementById('dashFilterSel').value='';renderDashboard();}
-
 function getFilteredOrders(){
   if(!dashFilter)return orders;
   if(dashFilter.type==='month'){
@@ -729,8 +685,6 @@ function getFilteredOrders(){
   }
   return orders;
 }
-
-// ─── renderShipping (full replacement with tracking URL support) ─────────────
 renderShipping=function(){
   const inTransit=orders.filter(o=>o.status==='Shipped').length;const awaiting=orders.filter(o=>o.status==='Sent to 3PL'||o.status==='Prepared').length;const delivered=orders.filter(o=>o.status==='Delivered'||o.status==='Invoiced').length;const late=orders.filter(o=>o.expectedDeliveryDate&&new Date(o.expectedDeliveryDate)<new Date()&&!o.actualDeliveryDate&&!['Delivered','Invoiced'].includes(o.status)).length;
   document.getElementById('shipping-stats').innerHTML=`<div class="stats-row"><div class="stat-card sc-sent-to-3pl"><div class="value">${awaiting}</div><div class="label">Awaiting Shipment</div></div><div class="stat-card sc-shipped"><div class="value">${inTransit}</div><div class="label">In Transit</div></div><div class="stat-card sc-delivered"><div class="value">${delivered}</div><div class="label">Delivered</div></div><div class="stat-card" style="--accent:${late>0?'#ef4444':'#10b981'}"><div class="value">${late}</div><div class="label">Late / Overdue</div></div></div>`;
@@ -740,10 +694,8 @@ renderShipping=function(){
   const tp=Math.max(1,Math.ceil(list.length/PAGE_SIZE));if(shipPage>tp)shipPage=tp;const page=list.slice((shipPage-1)*PAGE_SIZE,shipPage*PAGE_SIZE);
   const isLate=(o)=>o.expectedDeliveryDate&&new Date(o.expectedDeliveryDate)<new Date()&&!o.actualDeliveryDate&&!['Delivered','Invoiced'].includes(o.status);
   if(list.length===0){document.getElementById('shipping-table').innerHTML=`<div class="empty"><div class="icon">&#128666;</div><p>No shipments match your filters.</p></div>`;return;}
-  document.getElementById('shipping-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${SHIP_TABLE_FIELDS.map(f=>`<th onclick="toggleSSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,shipSort,shipSortDir)}</th>`).join('')}<th onclick="toggleSSort('status')">Status ${sIcon('status',shipSort,shipSortDir)}</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr${isLate(o)?' style="background:#fef2f2"':''}>${SHIP_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f==='carrierTracking')return`<td style="font-family:monospace;font-size:11px">${esc(o[f]||'—')}</td>`;if(f==='carrierTrackingUrl')return`<td>${o[f]?`<a href="${esc(o[f])}" target="_blank" rel="noopener" style="color:#6366f1;font-size:11px;display:inline-flex;align-items:center;gap:3px;">&#128279; Track</a>`:'—'}</td>`;if(f==='expectedDeliveryDate')return`<td>${o[f]||'—'}${isLate(o)?'<span class="late-flag">LATE</span>':''}</td>`;return`<td>${o[f]||'—'}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(shipPage-1)*PAGE_SIZE+1}–${Math.min(shipPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${shipPage<=1?'disabled':''} onclick="shipPage--;renderShipping()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${shipPage>=tp?'disabled':''} onclick="shipPage++;renderShipping()">Next &#8594;</button></div></div>`;
+  document.getElementById('shipping-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${SHIP_TABLE_FIELDS.map(f=>`<th onclick="toggleSSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,shipSort,shipSortDir)}</th>`).join('')}<th onclick="toggleSSort('status')">Status ${sIcon('status',shipSort,shipSortDir)}</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr${isLate(o)?' style="background:#fef2f2"':''}>${SHIP_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f.includes('Date'))return`<td>${formatDate(o[f])}</td>`;if(f==='carrierTracking')return`<td style="font-family:monospace;font-size:11px">${esc(o[f]||'—')}</td>`;if(f==='carrierTrackingUrl')return`<td>${o[f]?`<a href="${esc(o[f])}" target="_blank" rel="noopener" style="color:#6366f1;font-size:11px;display:inline-flex;align-items:center;gap:3px;">&#128279; Track</a>`:'—'}</td>`;if(f==='expectedDeliveryDate')return`<td>${formatDate(o[f])||'—'}${isLate(o)?'<span class="late-flag">LATE</span>':''}</td>`;return`<td>${o[f]||'—'}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(shipPage-1)*PAGE_SIZE+1}–${Math.min(shipPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${shipPage<=1?'disabled':''} onclick="shipPage--;renderShipping()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${shipPage>=tp?'disabled':''} onclick="shipPage++;renderShipping()">Next &#8594;</button></div></div>`;
 };
-
-// ─── renderDashboard (full replacement with period filter support) ───────────
 renderDashboard=function(){
   populateDashFilter();
   const filteredOrders=getFilteredOrders();
@@ -770,12 +722,8 @@ renderDashboard=function(){
   tb.forEach(b=>{const bo=filteredOrders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b));const br=bo.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);const ba=bo.length?br/bo.length:0;const bs=bo.filter(o=>o.actualShipDate).length;const bd=bo.filter(o=>o.actualDeliveryDate).length;tbl+=`<tr><td style="font-weight:600">${b.label}</td><td>${bo.length}</td><td>$${fmt(br)}</td><td>$${fmt(ba)}</td><td>${bs}</td><td>${bd}</td></tr>`;});
   tbl+='</tbody></table>';document.getElementById('reportTable').innerHTML=tbl;
 };
-
-// ─── TAB HANDLER: include refdata tab ───────────────────────────────────────
 document.querySelectorAll('.top-tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.top-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));tab.classList.add('active');document.getElementById('tab-'+tab.dataset.tab).classList.add('active');if(tab.dataset.tab==='dashboard'){populateDashFilter();renderDashboard();}if(tab.dataset.tab==='refdata')renderRefData();});});
-
-// ─── INIT ────────────────────────────────────────────────────────────────────
-load(); // async: loads local cache first, then fetches from Sheets
+load();
 updateDataLists();
 populateFilterDropdowns();
 renderOrders();
