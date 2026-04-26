@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Order Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
+<style>
+:root { color-scheme: light; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; color: #1a1a2e; line-height: 1.5; font-size: 13px; }
+.top-tabs { display: flex; background: #fff; border-bottom: 2px solid #e2e8f0; padding: 0 16px; position: sticky; top: 0; z-index: 50; }
+.top-tab { padding: 12px 20px; cursor: pointer; font-size: 13px; font-weight: 600; color: #64748b; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+.top-tab:hover { color: #6366f1; background: #f8fafc; }
+.top-tab.active { color: #6366f1; border-bottom-color: #6366f1; }
+.top-tab .tab-icon { font-size: 15px; }
+.tab-content { display: none; padding: 16px; }
+.tab-content.active { display: block; }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 16px; }
+.stat-card { background: #fff; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 3px solid var(--accent, #6366f1); }
+.stat-card .value { font-size: 22px; font-weight: 700; color: var(--accent, #6366f1); }
+.stat-card .label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+.sc-received { --accent: #6366f1; } .sc-approved { --accent: #8b5cf6; } .sc-sent-to-3pl { --accent: #f59e0b; }
+.sc-prepared { --accent: #06b6d4; } .sc-shipped { --accent: #3b82f6; } .sc-delivered { --accent: #10b981; } .sc-invoiced { --accent: #059669; }
+.pipeline { display: flex; gap: 2px; margin-bottom: 16px; background: #fff; border-radius: 10px; padding: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
+.pipeline-stage { flex: 1; text-align: center; padding: 8px 4px; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 70px; }
+.pipeline-stage:hover { opacity: 0.85; }
+.pipeline-stage.active { box-shadow: 0 0 0 2px var(--accent); }
+.pipeline-stage .stage-count { font-size: 18px; font-weight: 700; color: var(--accent); }
+.pipeline-stage .stage-name { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.3px; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.toolbar input[type="text"] { flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; background: #fff; }
+.toolbar input[type="text"]:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.btn { padding: 8px 14px; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; display: inline-flex; align-items: center; gap: 5px; }
+.btn-primary { background: #6366f1; color: #fff; } .btn-primary:hover { background: #4f46e5; }
+.btn-success { background: #10b981; color: #fff; } .btn-success:hover { background: #059669; }
+.btn-danger { background: #ef4444; color: #fff; } .btn-danger:hover { background: #dc2626; }
+.btn-secondary { background: #e2e8f0; color: #475569; } .btn-secondary:hover { background: #cbd5e1; }
+.btn-sm { padding: 4px 10px; font-size: 11px; } .btn-xs { padding: 2px 7px; font-size: 10px; border-radius: 4px; }
+.table-wrap { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: #f1f5f9; padding: 10px 8px; text-align: left; font-weight: 600; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; position: sticky; top: 0; cursor: pointer; white-space: nowrap; }
+th:hover { background: #e2e8f0; }
+td { padding: 8px; border-top: 1px solid #f1f5f9; vertical-align: middle; }
+tr:hover { background: #f8fafc; }
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.badge-received { background: #eef2ff; color: #6366f1; } .badge-approved { background: #f3e8ff; color: #8b5cf6; }
+.badge-sent-to-3pl { background: #fef3c7; color: #d97706; } .badge-prepared { background: #cffafe; color: #0891b2; }
+.badge-shipped { background: #dbeafe; color: #2563eb; } .badge-delivered { background: #d1fae5; color: #059669; }
+.badge-invoiced { background: #a7f3d0; color: #047857; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: flex-start; padding: 30px 16px; overflow-y: auto; }
+.modal-overlay.open { display: flex; }
+.modal { background: #fff; border-radius: 14px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+.modal-header { padding: 16px 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+.modal-header h2 { font-size: 16px; font-weight: 700; }
+.modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #94a3b8; padding: 0 4px; }
+.modal-close:hover { color: #1a1a2e; }
+.modal-body { padding: 20px; max-height: 65vh; overflow-y: auto; }
+.modal-footer { padding: 12px 20px; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 8px; }
+.form-section { margin-bottom: 16px; }
+.form-section h3 { font-size: 12px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 2px solid #eef2ff; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form-group { display: flex; flex-direction: column; }
+.form-group.full { grid-column: 1 / -1; }
+.form-group label { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 3px; }
+.form-group input, .form-group select, .form-group textarea { padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; font-family: inherit; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.pagination { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 12px; color: #64748b; }
+.page-buttons { display: flex; gap: 4px; }
+.empty { text-align: center; padding: 40px 20px; color: #94a3b8; }
+.empty .icon { font-size: 36px; margin-bottom: 8px; }
+.csv-drop { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 24px; text-align: center; color: #94a3b8; cursor: pointer; transition: all 0.2s; margin-bottom: 12px; }
+.csv-drop:hover, .csv-drop.dragover { border-color: #6366f1; color: #6366f1; background: #f5f3ff; }
+.csv-drop input { display: none; }
+.csv-preview { max-height: 200px; overflow: auto; font-size: 11px; margin-top: 8px; }
+.csv-preview table { font-size: 11px; } .csv-preview td, .csv-preview th { padding: 4px 6px; }
+.mapping-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+.mapping-row label { min-width: 130px; font-weight: 600; color: #475569; }
+.mapping-row select { flex: 1; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }
+.dropdown { position: relative; display: inline-block; }
+.dropdown-menu { display: none; position: absolute; right: 0; top: 100%; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; min-width: 160px; padding: 4px 0; }
+.dropdown-menu.show { display: block; }
+.dropdown-menu a { display: block; padding: 8px 14px; font-size: 12px; color: #334155; text-decoration: none; cursor: pointer; }
+.dropdown-menu a:hover { background: #f1f5f9; }
+.filter-panel { background: #fff; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
+.filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: flex-end; }
+.filter-group { display: flex; flex-direction: column; }
+.filter-group label { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+.filter-group input, .filter-group select { padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; background: #fff; }
+.filter-group input:focus, .filter-group select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.filter-actions { display: flex; gap: 6px; }
+.filter-actions button { padding: 8px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; }
+.filter-clear-btn { background: #f1f5f9; color: #475569; } .filter-clear-btn:hover { background: #e2e8f0; }
+.filter-apply-btn { background: #6366f1; color: #fff; } .filter-apply-btn:hover { background: #4f46e5; }
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.chart-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.chart-card.full { grid-column: 1 / -1; }
+.chart-card h3 { font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+.chart-container { position: relative; height: 220px; }
+.period-toggle { display: flex; gap: 0; background: #f1f5f9; border-radius: 8px; padding: 2px; margin-bottom: 16px; width: fit-content; }
+.period-btn { padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; color: #64748b; background: transparent; transition: all 0.2s; }
+.period-btn.active { background: #fff; color: #6366f1; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.report-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.report-table th { background: #f8fafc; padding: 8px; text-align: left; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; font-size: 11px; text-transform: uppercase; }
+.report-table td { padding: 8px; border-bottom: 1px solid #f1f5f9; }
+.report-table tr:hover { background: #f8fafc; }
+.trend-up { color: #10b981; font-weight: 600; } .trend-down { color: #ef4444; font-weight: 600; }
+.toast { position: fixed; bottom: 20px; right: 20px; background: #1e293b; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 12px; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.late-flag { color: #ef4444; font-size: 10px; font-weight: 700; margin-left: 4px; }
+::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="top-tabs">
+  <div class="top-tab active" data-tab="orders"><span class="tab-icon">&#128203;</span> Orders</div>
+  <div class="top-tab" data-tab="shipping"><span class="tab-icon">&#128666;</span> Shipping</div>
+  <div class="top-tab" data-tab="dashboard"><span class="tab-icon">&#128200;</span> Dashboard</div>
+</div>
+<div class="tab-content active" id="tab-orders">
+  <div id="orders-stats"></div><div id="orders-pipeline"></div>
+  <div class="toolbar">
+    <input type="text" id="ordersSearch" placeholder="Search by order ID, customer, SKU, city..." oninput="orderSearch=this.value;orderPage=1;renderOrders()">
+    <button class="btn btn-primary" onclick="openNewOrder()">+ New Order</button>
+    <button class="btn btn-secondary" onclick="openCsvModal()">Import CSV</button>
+    <div class="dropdown"><button class="btn btn-secondary" onclick="toggleExport()">Export &#9662;</button><div class="dropdown-menu" id="exportMenu"><a onclick="exportCsv()">Export as CSV</a><a onclick="exportJson()">Export as JSON</a></div></div>
+    <button class="btn btn-secondary" onclick="toggleFilterPanel()">⚙ Filters</button>
+  </div>
+  <div id="filterPanel" style="display:none;" class="filter-panel">
+    <div class="filter-grid">
+      <div class="filter-group">
+        <label>Customer Name</label>
+        <select id="filterCustomerName">
+          <option value="">-- All Customers --</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>SKU</label>
+        <select id="filterSku">
+          <option value="">-- All SKUs --</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Status</label>
+        <select id="filterStatus">
+          <option value="">-- All Statuses --</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Order Date</label>
+        <select id="filterOrderDate">
+          <option value="">-- All Order Dates --</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>PO Due Date</label>
+        <select id="filterPoDueDate">
+          <option value="">-- All PO Due Dates --</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Quantity</label>
+        <select id="filterQuantity">
+          <option value="">-- All Quantities --</option>
+        </select>
+      </div>
+      <div class="filter-actions" style="grid-column: 1 / -1;">
+        <button class="filter-apply-btn" onclick="applyFilters()">Apply Filters</button>
+        <button class="filter-clear-btn" onclick="clearFilters()">Clear All</button>
+      </div>
+    </div>
+  </div>
+  <div id="orders-table"></div>
+</div>
+<div class="tab-content" id="tab-shipping">
+  <div id="shipping-stats"></div>
+  <div class="toolbar">
+    <input type="text" id="shippingSearch" placeholder="Search by order ID, warehouse, carrier, tracking..." oninput="shipSearch=this.value;shipPage=1;renderShipping()">
+    <select id="shipStatusFilter" onchange="shipStatusFilter=this.value;shipPage=1;renderShipping()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;background:#fff">
+      <option value="All">All Statuses</option><option value="Sent to 3PL">Sent to 3PL</option><option value="Prepared">Prepared</option><option value="Shipped">Shipped</option><option value="Delivered">Delivered</option>
+    </select>
+  </div>
+  <div id="shipping-table"></div>
+</div>
+<div class="tab-content" id="tab-dashboard">
+  <div class="period-toggle"><button class="period-btn active" onclick="setPeriod('weekly')">Weekly</button><button class="period-btn" onclick="setPeriod('monthly')">Monthly</button></div>
+  <div id="dash-stats"></div>
+  <div class="chart-grid">
+    <div class="chart-card"><h3>Orders Over Time</h3><div class="chart-container"><canvas id="chartOrdersTime"></canvas></div></div>
+    <div class="chart-card"><h3>Revenue Over Time</h3><div class="chart-container"><canvas id="chartRevenueTime"></canvas></div></div>
+    <div class="chart-card"><h3>Status Distribution</h3><div class="chart-container"><canvas id="chartStatusDist"></canvas></div></div>
+    <div class="chart-card"><h3>Top Customers by Revenue</h3><div class="chart-container"><canvas id="chartTopCustomers"></canvas></div></div>
+    <div class="chart-card full"><h3 id="reportTitle">Period Breakdown</h3><div id="reportTable"></div></div>
+  </div>
+</div>
+<div class="modal-overlay" id="orderModal"><div class="modal">
+<div class="modal-header"><h2 id="modalTitle">New Order</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+<div class="modal-body">
+  <div class="form-section"><h3>Order Details</h3><div class="form-grid">
+    <div class="form-group"><label>Order ID *</label><input id="f_orderId" placeholder="e.g. ORD-001"></div>
+    <div class="form-group"><label>Order Date *</label><input id="f_orderDate" type="date"></div>
+    <div class="form-group"><label>Customer Name (Retailer) *</label><input id="f_customerName" placeholder="Retailer name"></div>
+    <div class="form-group"><label>Delivery City</label><input id="f_deliveryCity" placeholder="City name"></div>
+    <div class="form-group"><label>Status</label><select id="f_status">
+      <option value="Received">Order Received</option><option value="Approved">Order Approved</option>
+      <option value="Sent to 3PL">Sent to 3PL</option><option value="Prepared">Warehouse Prepared</option>
+      <option value="Shipped">Shipped</option><option value="Delivered">Delivered / Picked Up</option>
+      <option value="Invoiced">Invoiced</option>
+    </select></div>
+  </div></div>
+  <div class="form-section"><h3>Product &amp; Financials</h3><div class="form-grid">
+    <div class="form-group"><label>SKU (Stock Keeping Unit)</label><input id="f_sku" placeholder="SKU code"></div>
+    <div class="form-group"><label>Quantity</label><input id="f_quantity" type="number" min="1" placeholder="0"></div>
+    <div class="form-group"><label>Unit Price</label><input id="f_unitPrice" type="number" step="0.01" placeholder="0.00"></div>
+    <div class="form-group"><label>Total Value (Gross)</label><input id="f_totalValue" type="number" step="0.01" placeholder="Auto-calculated"></div>
+    <div class="form-group"><label>PO Due Date</label><input id="f_poDueDate" type="date"></div>
+    <div class="form-group"><label>Routing (Shipping) Due Date</label><input id="f_routingDueDate" type="date"></div>
+  </div></div>
+  <div class="form-section"><h3>Invoice</h3><div class="form-grid">
+    <div class="form-group"><label>Invoice #</label><input id="f_invoiceNumber" placeholder="INV-001"></div>
+    <div class="form-group"><label>Invoice Date</label><input id="f_invoiceDate" type="date"></div>
+  </div></div>
+  <div class="form-section"><h3>Shipping &amp; Logistics</h3><div class="form-grid">
+    <div class="form-group"><label>Sent to Warehouse Date</label><input id="f_sentToWarehouseDate" type="date"></div>
+    <div class="form-group"><label>Warehouse Name</label><input id="f_warehouseName" placeholder="Warehouse name"></div>
+    <div class="form-group"><label>Expected Ship Date</label><input id="f_expectedShipDate" type="date"></div>
+    <div class="form-group"><label>Expected Delivery Date</label><input id="f_expectedDeliveryDate" type="date"></div>
+    <div class="form-group"><label>Carrier Name</label><input id="f_carrierName" placeholder="e.g. FedEx, UPS"></div>
+    <div class="form-group"><label>Carrier Tracking #</label><input id="f_carrierTracking" placeholder="Tracking number"></div>
+    <div class="form-group"><label>Actual Ship Date</label><input id="f_actualShipDate" type="date"></div>
+    <div class="form-group"><label>Actual Delivery Date</label><input id="f_actualDeliveryDate" type="date"></div>
+  </div></div>
+</div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveOrder()">Save Order</button></div>
+</div></div>
+<div class="modal-overlay" id="csvModal"><div class="modal">
+<div class="modal-header"><h2>Import Orders from CSV</h2><button class="modal-close" onclick="closeCsvModal()">&times;</button></div>
+<div class="modal-body">
+  <div id="csvStep1"><div class="csv-drop" id="csvDrop" onclick="document.getElementById('csvFile').click()"><div class="icon">&#128196;</div><p>Drop a CSV file here or click to browse</p><input type="file" id="csvFile" accept=".csv,.tsv,.txt"></div></div>
+  <div id="csvStep2" style="display:none"><p style="font-size:12px;color:#64748b;margin-bottom:12px;">Map your CSV columns to order fields.</p><div id="csvMappings"></div><div class="csv-preview" id="csvPreview"></div></div>
+</div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="closeCsvModal()">Cancel</button><button class="btn btn-success" id="btnImport" style="display:none" onclick="importCsv()">Import Orders</button></div>
+</div></div>
+<div class="modal-overlay" id="viewModal"><div class="modal">
+<div class="modal-header"><h2 id="viewTitle">Order Details</h2><button class="modal-close" onclick="closeViewModal()">&times;</button></div>
+<div class="modal-body" id="viewBody"></div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="closeViewModal()">Close</button><button class="btn btn-primary" onclick="editFromView()">Edit</button></div>
+</div></div>
+<div class="toast" id="toast"></div>
+<script>
+const STORAGE_KEY='sales_orders_v2';
+const STATUSES=['Received','Approved','Sent to 3PL','Prepared','Shipped','Delivered','Invoiced'];
+const STATUS_KEYS=['received','approved','sent-to-3pl','prepared','shipped','delivered','invoiced'];
+const STATUS_COLORS=['#6366f1','#8b5cf6','#f59e0b','#06b6d4','#3b82f6','#10b981','#059669'];
+const FIELDS=['orderId','orderDate','customerName','deliveryCity','status','sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate','invoiceNumber','invoiceDate','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate'];
+const FIELD_LABELS={orderId:'Order ID',orderDate:'Order Date',customerName:'Customer Name (Retailer)',deliveryCity:'Delivery City',status:'Status',sku:'SKU',quantity:'Quantity',unitPrice:'Unit Price',totalValue:'Total Value (Gross)',poDueDate:'PO Due Date',routingDueDate:'Routing Due Date',invoiceNumber:'Invoice #',invoiceDate:'Invoice Date',sentToWarehouseDate:'Sent to Warehouse',warehouseName:'Warehouse Name',expectedShipDate:'Expected Ship',expectedDeliveryDate:'Expected Delivery',carrierName:'Carrier Name',carrierTracking:'Carrier Tracking #',actualShipDate:'Actual Ship Date',actualDeliveryDate:'Actual Delivery Date'};
+const ORDER_TABLE_FIELDS=['orderId','orderDate','customerName','deliveryCity','sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate','invoiceNumber','invoiceDate'];
+const SHIP_TABLE_FIELDS=['orderId','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate'];
+
+let orders=[],editingId=null,viewingId=null;
+let orderFilter='All',orderSearch='',orderSort='orderDate',orderSortDir=-1,orderPage=1;
+let shipSearch='',shipStatusFilter='All',shipSort='expectedShipDate',shipSortDir=-1,shipPage=1;
+let dashPeriod='weekly';const PAGE_SIZE=20;let charts={};
+let activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};
+
+function load(){try{let d=localStorage.getItem(STORAGE_KEY);if(!d)d=localStorage.getItem('sales_orders_v1');orders=d?JSON.parse(d):[];}catch(e){orders=[];}}
+function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(orders));}
+function genId(){return'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,6);}
+
+document.querySelectorAll('.top-tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.top-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));tab.classList.add('active');document.getElementById('tab-'+tab.dataset.tab).classList.add('active');if(tab.dataset.tab==='dashboard')renderDashboard();});});
+
+function fmt(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function sKey(s){return(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');}
+function nextSt(s){const i=STATUSES.indexOf(s);return i>=0&&i<STATUSES.length-1?STATUSES[i+1]:null;}
+function sIcon(f,sf,sd){return sf===f?(sd===1?'&#9650;':'&#9660;'):'';}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+function formatCell(field,val){if(!val)return'—';if(field==='totalValue'||field==='unitPrice')return'$'+fmt(parseFloat(val)||0);if(field==='status')return`<span class="status-badge badge-${sKey(val)}">${val}</span>`;return esc(val);}
+function sortCompare(a,b,field,dir){let va=a[field]||'',vb=b[field]||'';if(['totalValue','quantity','unitPrice'].includes(field)){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}else if(field==='status'){va=STATUSES.indexOf(va);vb=STATUSES.indexOf(vb);}else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}return va<vb?-dir:va>vb?dir:0;}
+
+function toggleFilterPanel(){document.getElementById('filterPanel').style.display=document.getElementById('filterPanel').style.display==='none'?'block':'none';populateFilterDropdowns();}
+function populateFilterDropdowns(){const customers=new Set(),skus=new Set(),statuses=new Set(),orderDates=new Set(),poDueDates=new Set(),quantities=new Set();orders.forEach(o=>{if(o.customerName)customers.add(o.customerName);if(o.sku)skus.add(o.sku);if(o.status)statuses.add(o.status);if(o.orderDate)orderDates.add(o.orderDate);if(o.poDueDate)poDueDates.add(o.poDueDate);if(o.quantity)quantities.add(o.quantity);});const custSel=document.getElementById('filterCustomerName');const skuSel=document.getElementById('filterSku');const statSel=document.getElementById('filterStatus');const orderDateSel=document.getElementById('filterOrderDate');const poDueDateSel=document.getElementById('filterPoDueDate');const qtySel=document.getElementById('filterQuantity');const curCust=custSel.value,curSku=skuSel.value,curStat=statSel.value,curOrderDate=orderDateSel.value,curPoDueDate=poDueDateSel.value,curQty=qtySel.value;custSel.innerHTML='<option value="">-- All Customers --</option>';Array.from(customers).sort().forEach(c=>{custSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});custSel.value=curCust;skuSel.innerHTML='<option value="">-- All SKUs --</option>';Array.from(skus).sort().forEach(s=>{skuSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});skuSel.value=curSku;statSel.innerHTML='<option value="">-- All Statuses --</option>';STATUSES.forEach(s=>{if(statuses.has(s))statSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});statSel.value=curStat;orderDateSel.innerHTML='<option value="">-- All Order Dates --</option>';Array.from(orderDates).sort().forEach(d=>{orderDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});orderDateSel.value=curOrderDate;poDueDateSel.innerHTML='<option value="">-- All PO Due Dates --</option>';Array.from(poDueDates).sort().forEach(d=>{poDueDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});poDueDateSel.value=curPoDueDate;qtySel.innerHTML='<option value="">-- All Quantities --</option>';Array.from(quantities).sort((a,b)=>parseFloat(a)-parseFloat(b)).forEach(q=>{qtySel.appendChild(Object.assign(document.createElement('option'),{value:q,textContent:q}));});qtySel.value=curQty;}
+function applyFilters(){activeFilters.customerName=document.getElementById('filterCustomerName').value;activeFilters.sku=document.getElementById('filterSku').value;activeFilters.status=document.getElementById('filterStatus').value;activeFilters.orderDate=document.getElementById('filterOrderDate').value;activeFilters.poDueDate=document.getElementById('filterPoDueDate').value;activeFilters.quantity=document.getElementById('filterQuantity').value;orderPage=1;renderOrders();toast('Filters applied');}
+function clearFilters(){activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};document.getElementById('filterOrderDate').value='';document.getElementById('filterPoDueDate').value='';document.getElementById('filterCustomerName').value='';document.getElementById('filterSku').value='';document.getElementById('filterQuantity').value='';document.getElementById('filterStatus').value='';orderPage=1;renderOrders();toast('Filters cleared');}
+function applyActiveFilters(list){if(activeFilters.customerName){list=list.filter(o=>o.customerName===activeFilters.customerName);}if(activeFilters.sku){list=list.filter(o=>o.sku===activeFilters.sku);}if(activeFilters.status){list=list.filter(o=>o.status===activeFilters.status);}if(activeFilters.orderDate){list=list.filter(o=>o.orderDate===activeFilters.orderDate);}if(activeFilters.poDueDate){list=list.filter(o=>o.poDueDate===activeFilters.poDueDate);}if(activeFilters.quantity){list=list.filter(o=>o.quantity===activeFilters.quantity);}return list;}
+
+function renderOrders(){
+  const sc={};STATUSES.forEach(s=>sc[s]=0);orders.forEach(o=>{if(sc[o.status]!==undefined)sc[o.status]++;});
+  const tv=orders.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);
+  const invoiced=orders.filter(o=>o.status==='Invoiced').length;
+  const pending=orders.filter(o=>o.poDueDate&&new Date(o.poDueDate)<new Date()&&!['Delivered','Invoiced'].includes(o.status)).length;
+  document.getElementById('orders-stats').innerHTML=`<div class="stats-row"><div class="stat-card sc-received"><div class="value">${orders.length}</div><div class="label">Total Orders</div></div><div class="stat-card sc-shipped"><div class="value">$${fmt(tv)}</div><div class="label">Total Value (Gross)</div></div><div class="stat-card sc-invoiced"><div class="value">${invoiced}</div><div class="label">Invoiced</div></div><div class="stat-card" style="--accent:${pending>0?'#ef4444':'#10b981'}"><div class="value">${pending}</div><div class="label">Past PO Due</div></div></div>`;
+  document.getElementById('orders-pipeline').innerHTML=`<div class="pipeline"><div class="pipeline-stage sc-received ${orderFilter==='All'?'active':''}" onclick="orderFilter='All';orderPage=1;renderOrders()"><div class="stage-count">${orders.length}</div><div class="stage-name">All</div></div>${STATUSES.map((s,i)=>`<div class="pipeline-stage sc-${STATUS_KEYS[i]} ${orderFilter===s?'active':''}" onclick="orderFilter='${s}';orderPage=1;renderOrders()"><div class="stage-count">${sc[s]}</div><div class="stage-name">${s}</div></div>`).join('')}</div>`;
+  let list=orderFilter!=='All'?orders.filter(o=>o.status===orderFilter):[...orders];
+  if(orderSearch.trim()){const q=orderSearch.toLowerCase();list=list.filter(o=>[o.orderId,o.customerName,o.sku,o.deliveryCity,o.invoiceNumber].some(v=>v&&v.toLowerCase().includes(q)));}
+  list=applyActiveFilters(list);
+  list.sort((a,b)=>sortCompare(a,b,orderSort,orderSortDir));
+  const tp=Math.max(1,Math.ceil(list.length/PAGE_SIZE));if(orderPage>tp)orderPage=tp;const page=list.slice((orderPage-1)*PAGE_SIZE,orderPage*PAGE_SIZE);
+  if(list.length===0){document.getElementById('orders-table').innerHTML=`<div class="empty"><div class="icon">&#128230;</div><p>${orders.length===0?'No orders yet. Create one or import from CSV.':'No orders match your filters.'}</p></div>`;return;}
+  document.getElementById('orders-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${ORDER_TABLE_FIELDS.map(f=>`<th onclick="toggleOSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,orderSort,orderSortDir)}</th>`).join('')}<th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr>${ORDER_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f==='totalValue')return`<td style="font-weight:600">${formatCell(f,o[f])}</td>`;return`<td>${formatCell(f,o[f])}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button><button class="btn btn-danger btn-xs" onclick="deleteOrder('${o._id}')" title="Delete">&#10005;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(orderPage-1)*PAGE_SIZE+1}–${Math.min(orderPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${orderPage<=1?'disabled':''} onclick="orderPage--;renderOrders()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${orderPage>=tp?'disabled':''} onclick="orderPage++;renderOrders()">Next &#8594;</button></div></div>`;
+}
+function toggleOSort(f){if(orderSort===f)orderSortDir*=-1;else{orderSort=f;orderSortDir=1;}renderOrders();}
+
+function renderShipping(){
+  const inTransit=orders.filter(o=>o.status==='Shipped').length;const awaiting=orders.filter(o=>o.status==='Sent to 3PL'||o.status==='Prepared').length;const delivered=orders.filter(o=>o.status==='Delivered'||o.status==='Invoiced').length;const late=orders.filter(o=>o.expectedDeliveryDate&&new Date(o.expectedDeliveryDate)<new Date()&&!o.actualDeliveryDate&&!['Delivered','Invoiced'].includes(o.status)).length;
+  document.getElementById('shipping-stats').innerHTML=`<div class="stats-row"><div class="stat-card sc-sent-to-3pl"><div class="value">${awaiting}</div><div class="label">Awaiting Shipment</div></div><div class="stat-card sc-shipped"><div class="value">${inTransit}</div><div class="label">In Transit</div></div><div class="stat-card sc-delivered"><div class="value">${delivered}</div><div class="label">Delivered</div></div><div class="stat-card" style="--accent:${late>0?'#ef4444':'#10b981'}"><div class="value">${late}</div><div class="label">Late / Overdue</div></div></div>`;
+  let list=shipStatusFilter==='All'?[...orders]:orders.filter(o=>o.status===shipStatusFilter);
+  if(shipSearch.trim()){const q=shipSearch.toLowerCase();list=list.filter(o=>[o.orderId,o.warehouseName,o.carrierName,o.carrierTracking,o.customerName].some(v=>v&&v.toLowerCase().includes(q)));}
+  list.sort((a,b)=>sortCompare(a,b,shipSort,shipSortDir));
+  const tp=Math.max(1,Math.ceil(list.length/PAGE_SIZE));if(shipPage>tp)shipPage=tp;const page=list.slice((shipPage-1)*PAGE_SIZE,shipPage*PAGE_SIZE);
+  const isLate=(o)=>o.expectedDeliveryDate&&new Date(o.expectedDeliveryDate)<new Date()&&!o.actualDeliveryDate&&!['Delivered','Invoiced'].includes(o.status);
+  if(list.length===0){document.getElementById('shipping-table').innerHTML=`<div class="empty"><div class="icon">&#128666;</div><p>No shipments match your filters.</p></div>`;return;}
+  document.getElementById('shipping-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${SHIP_TABLE_FIELDS.map(f=>`<th onclick="toggleSSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,shipSort,shipSortDir)}</th>`).join('')}<th onclick="toggleSSort('status')">Status ${sIcon('status',shipSort,shipSortDir)}</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr${isLate(o)?' style="background:#fef2f2"':''}>${SHIP_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f==='carrierTracking')return`<td style="font-family:monospace;font-size:11px">${esc(o[f]||'—')}</td>`;if(f==='expectedDeliveryDate')return`<td>${o[f]||'—'}${isLate(o)?'<span class="late-flag">LATE</span>':''}</td>`;return`<td>${o[f]||'—'}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(shipPage-1)*PAGE_SIZE+1}–${Math.min(shipPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${shipPage<=1?'disabled':''} onclick="shipPage--;renderShipping()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${shipPage>=tp?'disabled':''} onclick="shipPage++;renderShipping()">Next &#8594;</button></div></div>`;
+}
+function toggleSSort(f){if(shipSort===f)shipSortDir*=-1;else{shipSort=f;shipSortDir=1;}renderShipping();}
+
+function setPeriod(p){dashPeriod=p;document.querySelectorAll('.period-btn').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase()===p));renderDashboard();}
+function renderDashboard(){
+  const now=new Date();const ps=new Date(now);if(dashPeriod==='weekly')ps.setDate(now.getDate()-7);else ps.setMonth(now.getMonth()-1);
+  const pvs=new Date(ps);if(dashPeriod==='weekly')pvs.setDate(pvs.getDate()-7);else pvs.setMonth(pvs.getMonth()-1);
+  const po=orders.filter(o=>o.orderDate&&new Date(o.orderDate)>=ps);const pvo=orders.filter(o=>o.orderDate&&new Date(o.orderDate)>=pvs&&new Date(o.orderDate)<ps);
+  const pr=po.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);const pvr=pvo.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);
+  const avg=po.length?pr/po.length:0;const ot=pvo.length?((po.length-pvo.length)/pvo.length*100):0;const rt=pvr?((pr-pvr)/pvr*100):0;
+  const th=(v)=>v>=0?`<span class="trend-up">+${v.toFixed(1)}%</span>`:`<span class="trend-down">${v.toFixed(1)}%</span>`;
+  const pl=dashPeriod==='weekly'?'This Week':'This Month';
+  document.getElementById('dash-stats').innerHTML=`<div class="stats-row"><div class="stat-card sc-received"><div class="value">${po.length}</div><div class="label">${pl} Orders ${pvo.length?th(ot):''}</div></div><div class="stat-card sc-shipped"><div class="value">$${fmt(pr)}</div><div class="label">${pl} Revenue ${pvr?th(rt):''}</div></div><div class="stat-card sc-approved"><div class="value">$${fmt(avg)}</div><div class="label">Avg Order Value</div></div><div class="stat-card sc-delivered"><div class="value">${orders.filter(o=>o.actualDeliveryDate).length}</div><div class="label">Delivered (All Time)</div></div></div>`;
+  Object.values(charts).forEach(c=>c.destroy());charts={};const tb=getTimeBuckets(dashPeriod);
+  const obt=tb.map(b=>orders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b)).length);
+  charts.ordersTime=new Chart(document.getElementById('chartOrdersTime'),{type:'bar',data:{labels:tb.map(b=>b.label),datasets:[{label:'Orders',data:obt,backgroundColor:'#6366f1',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
+  const rbt=tb.map(b=>orders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b)).reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0));
+  charts.revenueTime=new Chart(document.getElementById('chartRevenueTime'),{type:'line',data:{labels:tb.map(b=>b.label),datasets:[{label:'Revenue',data:rbt,borderColor:'#10b981',backgroundColor:'rgba(16,185,129,0.1)',fill:true,tension:0.3,pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+  const sd=STATUSES.map(s=>orders.filter(o=>o.status===s).length);
+  charts.statusDist=new Chart(document.getElementById('chartStatusDist'),{type:'doughnut',data:{labels:STATUSES,datasets:[{data:sd,backgroundColor:STATUS_COLORS}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}});
+  const custRev={};orders.forEach(o=>{if(o.customerName){custRev[o.customerName]=(custRev[o.customerName]||0)+(parseFloat(o.totalValue)||0);}});const topCust=Object.entries(custRev).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  charts.topCustomers=new Chart(document.getElementById('chartTopCustomers'),{type:'bar',data:{labels:topCust.map(c=>c[0]),datasets:[{label:'Revenue',data:topCust.map(c=>c[1]),backgroundColor:'#8b5cf6',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+  document.getElementById('reportTitle').textContent=dashPeriod==='weekly'?'Weekly Breakdown':'Monthly Breakdown';
+  let tbl=`<table class="report-table"><thead><tr><th>Period</th><th>Orders</th><th>Revenue</th><th>Avg Value</th><th>Shipped</th><th>Delivered</th></tr></thead><tbody>`;
+  tb.forEach(b=>{const bo=orders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b));const br=bo.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);const ba=bo.length?br/bo.length:0;const bs=bo.filter(o=>o.actualShipDate).length;const bd=bo.filter(o=>o.actualDeliveryDate).length;tbl+=`<tr><td style="font-weight:600">${b.label}</td><td>${bo.length}</td><td>$${fmt(br)}</td><td>$${fmt(ba)}</td><td>${bs}</td><td>${bd}</td></tr>`;});
+  tbl+='</tbody></table>';document.getElementById('reportTable').innerHTML=tbl;
+}
+function getTimeBuckets(period){const b=[];const now=new Date();if(period==='weekly'){for(let i=7;i>=0;i--){const s=new Date(now);s.setDate(now.getDate()-i*7);const e=new Date(s);e.setDate(s.getDate()+6);b.push({start:s,end:e,label:`Wk ${s.getMonth()+1}/${s.getDate()}`});}}else{for(let i=5;i>=0;i--){const s=new Date(now.getFullYear(),now.getMonth()-i,1);const e=new Date(now.getFullYear(),now.getMonth()-i+1,0);b.push({start:s,end:e,label:s.toLocaleString('en-US',{month:'short',year:'2-digit'})});}}return b;}
+function isInBucket(ds,b){const d=new Date(ds);return d>=b.start&&d<=b.end;}
+
+function openNewOrder(){editingId=null;clearForm();document.getElementById('modalTitle').textContent='New Order';document.getElementById('f_orderDate').value=new Date().toISOString().split('T')[0];document.getElementById('f_status').value='Received';document.getElementById('orderModal').classList.add('open');}
+function editOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;editingId=id;FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)el.value=o[f]||'';});document.getElementById('modalTitle').textContent='Edit Order';document.getElementById('orderModal').classList.add('open');}
+function closeModal(){document.getElementById('orderModal').classList.remove('open');}
+function clearForm(){FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)el.value='';});}
+function saveOrder(){const oi=document.getElementById('f_orderId').value.trim();const cn=document.getElementById('f_customerName').value.trim();const od=document.getElementById('f_orderDate').value;if(!oi||!cn||!od){alert('Order ID, Customer Name, and Order Date are required.');return;}const data={};FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)data[f]=el.value;});const q=parseFloat(data.quantity)||0,p=parseFloat(data.unitPrice)||0;if(q&&p&&!parseFloat(data.totalValue))data.totalValue=(q*p).toFixed(2);if(editingId){const idx=orders.findIndex(x=>x._id===editingId);if(idx>=0)orders[idx]={...orders[idx],...data,_updated:new Date().toISOString()};toast('Order updated');}else{data._id=genId();data._created=new Date().toISOString();orders.unshift(data);toast('Order created');}save();closeModal();populateFilterDropdowns();renderAll();}
+function deleteOrder(id){if(!confirm('Delete this order?'))return;orders=orders.filter(x=>x._id!==id);save();renderAll();toast('Order deleted');}
+function advanceStatus(id){const o=orders.find(x=>x._id===id);if(!o)return;const ns=nextSt(o.status);if(ns){o.status=ns;o._updated=new Date().toISOString();save();renderAll();toast(`Status → ${ns}`);}}
+document.getElementById('f_quantity').addEventListener('input',autoCalc);document.getElementById('f_unitPrice').addEventListener('input',autoCalc);
+function autoCalc(){const q=parseFloat(document.getElementById('f_quantity').value)||0,p=parseFloat(document.getElementById('f_unitPrice').value)||0;if(q&&p)document.getElementById('f_totalValue').value=(q*p).toFixed(2);}
+
+function viewOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;viewingId=id;document.getElementById('viewTitle').textContent=`Order ${o.orderId}`;const ci=STATUSES.indexOf(o.status);let html='<div style="display:flex;gap:2px;margin-bottom:16px;flex-wrap:wrap">';STATUSES.forEach((s,i)=>{const done=i<=ci;html+=`<div style="padding:4px 10px;border-radius:12px;font-size:10px;font-weight:600;${done?'background:#6366f1;color:#fff':'background:#f1f5f9;color:#94a3b8'}">${s}</div>`;});html+='</div>';
+[{title:'Order Details',fields:['orderId','orderDate','customerName','deliveryCity']},{title:'Product & Financials',fields:['sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate']},{title:'Invoice',fields:['invoiceNumber','invoiceDate']},{title:'Shipping & Logistics',fields:['sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate']}].forEach(sec=>{html+=`<div class="form-section"><h3>${sec.title}</h3><div class="form-grid">`;sec.fields.forEach(f=>{let val=o[f]||'—';if((f==='totalValue'||f==='unitPrice')&&o[f])val='$'+fmt(parseFloat(o[f]));html+=`<div class="form-group"><label>${FIELD_LABELS[f]}</label><div style="padding:5px 0;font-size:13px">${esc(String(val))}</div></div>`;});html+='</div></div>';});
+document.getElementById('viewBody').innerHTML=html;document.getElementById('viewModal').classList.add('open');}
+function closeViewModal(){document.getElementById('viewModal').classList.remove('open');}
+function editFromView(){closeViewModal();editOrder(viewingId);}
+
+let csvData=[],csvHeaders=[];
+function openCsvModal(){csvData=[];csvHeaders=[];document.getElementById('csvStep1').style.display='';document.getElementById('csvStep2').style.display='none';document.getElementById('btnImport').style.display='none';document.getElementById('csvFile').value='';document.getElementById('csvModal').classList.add('open');}
+function closeCsvModal(){document.getElementById('csvModal').classList.remove('open');}
+const csvDrop=document.getElementById('csvDrop');
+csvDrop.addEventListener('dragover',e=>{e.preventDefault();csvDrop.classList.add('dragover');});
+csvDrop.addEventListener('dragleave',()=>csvDrop.classList.remove('dragover'));
+csvDrop.addEventListener('drop',e=>{e.preventDefault();csvDrop.classList.remove('dragover');if(e.dataTransfer.files[0])parseCsvFile(e.dataTransfer.files[0]);});
+document.getElementById('csvFile').addEventListener('change',e=>{if(e.target.files[0])parseCsvFile(e.target.files[0]);});
+function parseCsvFile(file){const r=new FileReader();r.onload=e=>{const text=e.target.result;const sep=text.includes('\t')?'\t':',';const lines=text.split(/\r?\n/).filter(l=>l.trim());if(lines.length<2){alert('CSV needs header + data.');return;}csvHeaders=parseRow(lines[0],sep);csvData=lines.slice(1).map(l=>parseRow(l,sep));showMappings();};r.readAsText(file);}
+function parseRow(line,sep){const r=[];let c='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"')q=!q;else if(ch===sep&&!q){r.push(c.trim());c='';}else c+=ch;}r.push(c.trim());return r;}
+function showMappings(){document.getElementById('csvStep1').style.display='none';document.getElementById('csvStep2').style.display='';document.getElementById('btnImport').style.display='';const gm={};const aliases={orderId:['order id','order_id','orderid','order #','order number','po','po number'],orderDate:['order date','date','order_date','created'],customerName:['customer','customer name','client','buyer','retailer','customer name (retailer)'],deliveryCity:['delivery city','city','ship city','destination city'],status:['status','order status','state'],sku:['sku','product','item','product name','stock keeping unit','sku (stock keeping unit)'],quantity:['qty','quantity','units'],unitPrice:['unit price','price','unit_price','rate'],totalValue:['total','total value','order total','value','total value (gross)','gross'],poDueDate:['po due date','po due','purchase order due'],routingDueDate:['routing due date','routing due','shipping due date','routing (shipping) due date'],invoiceNumber:['invoice','invoice number','invoice #','invoice_number','inv'],invoiceDate:['invoice date','invoice_date','billed date'],sentToWarehouseDate:['sent to warehouse','sent to warehouse date','warehouse sent date'],warehouseName:['warehouse','warehouse name','3pl','3pl warehouse','fulfillment center'],expectedShipDate:['expected ship','expected ship date','ship date','est ship'],expectedDeliveryDate:['expected delivery','expected delivery date','delivery date','eta','est delivery'],carrierName:['carrier','carrier name','shipping carrier','courier','shipper'],carrierTracking:['tracking','tracking number','tracking #','carrier tracking','carrier tracking #'],actualShipDate:['actual ship','actual ship date','shipped date','ship actual'],actualDeliveryDate:['actual delivery','actual delivery date','delivered date','delivery actual']};
+csvHeaders.forEach((h,i)=>{const hl=h.toLowerCase().trim();for(const[f,a]of Object.entries(aliases)){if(a.includes(hl)&&!Object.values(gm).includes(f)){gm[i]=f;break;}}});
+let html='';csvHeaders.forEach((h,i)=>{html+=`<div class="mapping-row"><label>${esc(h)}</label><select id="map_${i}"><option value="">— Skip —</option>`;FIELDS.forEach(f=>{html+=`<option value="${f}" ${gm[i]===f?'selected':''}>${FIELD_LABELS[f]}</option>`;});html+='</select></div>';});document.getElementById('csvMappings').innerHTML=html;
+let prev='<table><thead><tr>'+csvHeaders.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>';csvData.slice(0,5).forEach(row=>{prev+='<tr>'+row.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>';});prev+='</tbody></table>';if(csvData.length>5)prev+=`<p style="color:#94a3b8;margin-top:4px">...and ${csvData.length-5} more rows</p>`;document.getElementById('csvPreview').innerHTML=prev;}
+function importCsv(){const mapping={};csvHeaders.forEach((h,i)=>{const sel=document.getElementById('map_'+i);if(sel&&sel.value)mapping[i]=sel.value;});let imp=0;csvData.forEach(row=>{const data={_id:genId(),_created:new Date().toISOString(),status:'Received'};for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}if(data.orderId||data.customerName){orders.unshift(data);imp++;}});save();closeCsvModal();populateFilterDropdowns();renderAll();toast(`Imported ${imp} orders`);}
+
+function toggleExport(){document.getElementById('exportMenu').classList.toggle('show');}
+document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document.getElementById('exportMenu')?.classList.remove('show');});
+function exportCsv(){const rows=[FIELDS.map(f=>FIELD_LABELS[f]).join(',')];orders.forEach(o=>{rows.push(FIELDS.map(f=>`"${(o[f]||'').toString().replace(/"/g,'""')}"`).join(','));});downloadFile(rows.join('\n'),'orders_export.csv','text/csv');toast('CSV exported');}
+function exportJson(){downloadFile(JSON.stringify(orders,null,2),'orders_export.json','application/json');toast('JSON exported');}
+function downloadFile(content,name,type){const b=new Blob([content],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();URL.revokeObjectURL(a.href);}
+
+function renderAll(){renderOrders();renderShipping();if(document.getElementById('tab-dashboard').classList.contains('active'))renderDashboard();}
+load();populateFilterDropdowns();renderOrders();renderShipping();
+</script>
+</body>
+</html>
