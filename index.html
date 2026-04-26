@@ -147,28 +147,22 @@ tr:hover { background: #f8fafc; }
         </select>
       </div>
       <div class="filter-group">
-        <label>Order Date From</label>
-        <input type="date" id="filterOrderDateFrom" value="">
+        <label>Order Date</label>
+        <select id="filterOrderDate">
+          <option value="">-- All Order Dates --</option>
+        </select>
       </div>
       <div class="filter-group">
-        <label>Order Date To</label>
-        <input type="date" id="filterOrderDateTo" value="">
+        <label>PO Due Date</label>
+        <select id="filterPoDueDate">
+          <option value="">-- All PO Due Dates --</option>
+        </select>
       </div>
       <div class="filter-group">
-        <label>PO Due Date From</label>
-        <input type="date" id="filterPoDueDateFrom" value="">
-      </div>
-      <div class="filter-group">
-        <label>PO Due Date To</label>
-        <input type="date" id="filterPoDueDateTo" value="">
-      </div>
-      <div class="filter-group">
-        <label>Quantity Min</label>
-        <input type="number" id="filterQtyMin" placeholder="0" min="0">
-      </div>
-      <div class="filter-group">
-        <label>Quantity Max</label>
-        <input type="number" id="filterQtyMax" placeholder="∞" min="0">
+        <label>Quantity</label>
+        <select id="filterQuantity">
+          <option value="">-- All Quantities --</option>
+        </select>
       </div>
       <div class="filter-actions" style="grid-column: 1 / -1;">
         <button class="filter-apply-btn" onclick="applyFilters()">Apply Filters</button>
@@ -267,7 +261,7 @@ let orders=[],editingId=null,viewingId=null;
 let orderFilter='All',orderSearch='',orderSort='orderDate',orderSortDir=-1,orderPage=1;
 let shipSearch='',shipStatusFilter='All',shipSort='expectedShipDate',shipSortDir=-1,shipPage=1;
 let dashPeriod='weekly';const PAGE_SIZE=20;let charts={};
-let activeFilters={orderDateFrom:'',orderDateTo:'',customerName:'',sku:'',qtyMin:'',qtyMax:'',poDueDateFrom:'',poDueDateTo:'',status:''};
+let activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};
 
 function load(){try{let d=localStorage.getItem(STORAGE_KEY);if(!d)d=localStorage.getItem('sales_orders_v1');orders=d?JSON.parse(d):[];}catch(e){orders=[];}}
 function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(orders));}
@@ -285,10 +279,10 @@ function formatCell(field,val){if(!val)return'—';if(field==='totalValue'||fiel
 function sortCompare(a,b,field,dir){let va=a[field]||'',vb=b[field]||'';if(['totalValue','quantity','unitPrice'].includes(field)){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}else if(field==='status'){va=STATUSES.indexOf(va);vb=STATUSES.indexOf(vb);}else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}return va<vb?-dir:va>vb?dir:0;}
 
 function toggleFilterPanel(){document.getElementById('filterPanel').style.display=document.getElementById('filterPanel').style.display==='none'?'block':'none';populateFilterDropdowns();}
-function populateFilterDropdowns(){const customers=new Set(),skus=new Set(),statuses=new Set();orders.forEach(o=>{if(o.customerName)customers.add(o.customerName);if(o.sku)skus.add(o.sku);if(o.status)statuses.add(o.status);});const custSel=document.getElementById('filterCustomerName');const skuSel=document.getElementById('filterSku');const statSel=document.getElementById('filterStatus');const curCust=custSel.value,curSku=skuSel.value,curStat=statSel.value;custSel.innerHTML='<option value="">-- All Customers --</option>';Array.from(customers).sort().forEach(c=>{custSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});custSel.value=curCust;skuSel.innerHTML='<option value="">-- All SKUs --</option>';Array.from(skus).sort().forEach(s=>{skuSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});skuSel.value=curSku;statSel.innerHTML='<option value="">-- All Statuses --</option>';STATUSES.forEach(s=>{if(statuses.has(s))statSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});statSel.value=curStat;}
-function applyFilters(){activeFilters.customerName=document.getElementById('filterCustomerName').value;activeFilters.sku=document.getElementById('filterSku').value;activeFilters.status=document.getElementById('filterStatus').value;activeFilters.orderDateFrom=document.getElementById('filterOrderDateFrom').value;activeFilters.orderDateTo=document.getElementById('filterOrderDateTo').value;activeFilters.poDueDateFrom=document.getElementById('filterPoDueDateFrom').value;activeFilters.poDueDateTo=document.getElementById('filterPoDueDateTo').value;activeFilters.qtyMin=parseFloat(document.getElementById('filterQtyMin').value)||'';activeFilters.qtyMax=parseFloat(document.getElementById('filterQtyMax').value)||'';orderPage=1;renderOrders();toast('Filters applied');}
-function clearFilters(){activeFilters={orderDateFrom:'',orderDateTo:'',customerName:'',sku:'',qtyMin:'',qtyMax:'',poDueDateFrom:'',poDueDateTo:'',status:''};document.getElementById('filterOrderDateFrom').value='';document.getElementById('filterOrderDateTo').value='';document.getElementById('filterCustomerName').value='';document.getElementById('filterSku').value='';document.getElementById('filterQtyMin').value='';document.getElementById('filterQtyMax').value='';document.getElementById('filterPoDueDateFrom').value='';document.getElementById('filterPoDueDateTo').value='';document.getElementById('filterStatus').value='';orderPage=1;renderOrders();toast('Filters cleared');}
-function applyActiveFilters(list){if(activeFilters.customerName){list=list.filter(o=>o.customerName===activeFilters.customerName);}if(activeFilters.sku){list=list.filter(o=>o.sku===activeFilters.sku);}if(activeFilters.status){list=list.filter(o=>o.status===activeFilters.status);}if(activeFilters.orderDateFrom){list=list.filter(o=>!o.orderDate||new Date(o.orderDate)>=new Date(activeFilters.orderDateFrom));}if(activeFilters.orderDateTo){list=list.filter(o=>!o.orderDate||new Date(o.orderDate)<=new Date(activeFilters.orderDateTo));}if(activeFilters.poDueDateFrom){list=list.filter(o=>!o.poDueDate||new Date(o.poDueDate)>=new Date(activeFilters.poDueDateFrom));}if(activeFilters.poDueDateTo){list=list.filter(o=>!o.poDueDate||new Date(o.poDueDate)<=new Date(activeFilters.poDueDateTo));}if(activeFilters.qtyMin!==''){list=list.filter(o=>(parseFloat(o.quantity)||0)>=activeFilters.qtyMin);}if(activeFilters.qtyMax!==''){list=list.filter(o=>(parseFloat(o.quantity)||0)<=activeFilters.qtyMax);}return list;}
+function populateFilterDropdowns(){const customers=new Set(),skus=new Set(),statuses=new Set(),orderDates=new Set(),poDueDates=new Set(),quantities=new Set();orders.forEach(o=>{if(o.customerName)customers.add(o.customerName);if(o.sku)skus.add(o.sku);if(o.status)statuses.add(o.status);if(o.orderDate)orderDates.add(o.orderDate);if(o.poDueDate)poDueDates.add(o.poDueDate);if(o.quantity)quantities.add(o.quantity);});const custSel=document.getElementById('filterCustomerName');const skuSel=document.getElementById('filterSku');const statSel=document.getElementById('filterStatus');const orderDateSel=document.getElementById('filterOrderDate');const poDueDateSel=document.getElementById('filterPoDueDate');const qtySel=document.getElementById('filterQuantity');const curCust=custSel.value,curSku=skuSel.value,curStat=statSel.value,curOrderDate=orderDateSel.value,curPoDueDate=poDueDateSel.value,curQty=qtySel.value;custSel.innerHTML='<option value="">-- All Customers --</option>';Array.from(customers).sort().forEach(c=>{custSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});custSel.value=curCust;skuSel.innerHTML='<option value="">-- All SKUs --</option>';Array.from(skus).sort().forEach(s=>{skuSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});skuSel.value=curSku;statSel.innerHTML='<option value="">-- All Statuses --</option>';STATUSES.forEach(s=>{if(statuses.has(s))statSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});statSel.value=curStat;orderDateSel.innerHTML='<option value="">-- All Order Dates --</option>';Array.from(orderDates).sort().forEach(d=>{orderDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});orderDateSel.value=curOrderDate;poDueDateSel.innerHTML='<option value="">-- All PO Due Dates --</option>';Array.from(poDueDates).sort().forEach(d=>{poDueDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});poDueDateSel.value=curPoDueDate;qtySel.innerHTML='<option value="">-- All Quantities --</option>';Array.from(quantities).sort((a,b)=>parseFloat(a)-parseFloat(b)).forEach(q=>{qtySel.appendChild(Object.assign(document.createElement('option'),{value:q,textContent:q}));});qtySel.value=curQty;}
+function applyFilters(){activeFilters.customerName=document.getElementById('filterCustomerName').value;activeFilters.sku=document.getElementById('filterSku').value;activeFilters.status=document.getElementById('filterStatus').value;activeFilters.orderDate=document.getElementById('filterOrderDate').value;activeFilters.poDueDate=document.getElementById('filterPoDueDate').value;activeFilters.quantity=document.getElementById('filterQuantity').value;orderPage=1;renderOrders();toast('Filters applied');}
+function clearFilters(){activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};document.getElementById('filterOrderDate').value='';document.getElementById('filterPoDueDate').value='';document.getElementById('filterCustomerName').value='';document.getElementById('filterSku').value='';document.getElementById('filterQuantity').value='';document.getElementById('filterStatus').value='';orderPage=1;renderOrders();toast('Filters cleared');}
+function applyActiveFilters(list){if(activeFilters.customerName){list=list.filter(o=>o.customerName===activeFilters.customerName);}if(activeFilters.sku){list=list.filter(o=>o.sku===activeFilters.sku);}if(activeFilters.status){list=list.filter(o=>o.status===activeFilters.status);}if(activeFilters.orderDate){list=list.filter(o=>o.orderDate===activeFilters.orderDate);}if(activeFilters.poDueDate){list=list.filter(o=>o.poDueDate===activeFilters.poDueDate);}if(activeFilters.quantity){list=list.filter(o=>o.quantity===activeFilters.quantity);}return list;}
 
 function renderOrders(){
   const sc={};STATUSES.forEach(s=>sc[s]=0);orders.forEach(o=>{if(sc[o.status]!==undefined)sc[o.status]++;});
