@@ -323,7 +323,7 @@ tr:hover { background: #f8fafc; }
 <script>
 // ─── GOOGLE SHEETS CONFIG ─────────────────────────────────────────────────────
 // After deploying your Apps Script Web App, paste the URL below:
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwhd8ktTaktZ708GrqYINPVWZffbehwxVV_Rt-yvWOLsvSRp-YrDoiDAOMZtNI0VSh9/exec';
+const APPS_SCRIPT_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
 
 const STORAGE_KEY='sales_orders_v2';
 const STATUSES=['Received','Approved','Sent to 3PL','Prepared','Shipped','Delivered','Invoiced'];
@@ -464,7 +464,7 @@ function getTimeBuckets(period){const b=[];const now=new Date();if(period==='wee
 function isInBucket(ds,b){const d=new Date(ds);return d>=b.start&&d<=b.end;}
 
 function openNewOrder(){editingId=null;clearForm();document.getElementById('modalTitle').textContent='New Order';document.getElementById('f_orderDate').value=new Date().toISOString().split('T')[0];document.getElementById('f_status').value='Received';document.getElementById('orderModal').classList.add('open');}
-function editOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;editingId=id;FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)el.value=o[f]||'';});document.getElementById('modalTitle').textContent='Edit Order';document.getElementById('orderModal').classList.add('open');}
+function editOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;editingId=id;FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el){let val=o[f]||'';if(f.includes('Date')&&val){const d=new Date(val);if(!isNaN(d))val=d.toISOString().split('T')[0];}el.value=val;}});document.getElementById('modalTitle').textContent='Edit Order';document.getElementById('orderModal').classList.add('open');}
 function closeModal(){document.getElementById('orderModal').classList.remove('open');}
 function clearForm(){FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)el.value='';});}
 async function saveOrder(){const oi=document.getElementById('f_orderId').value.trim();const cn=document.getElementById('f_customerName').value.trim();const od=document.getElementById('f_orderDate').value;if(!oi||!cn||!od){alert('Order ID, Customer Name, and Order Date are required.');return;}const data={};FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)data[f]=el.value;});const q=parseFloat(data.quantity)||0,p=parseFloat(data.unitPrice)||0;if(q&&p&&!parseFloat(data.totalValue))data.totalValue=(q*p).toFixed(2);let action,savedOrder;if(editingId){const idx=orders.findIndex(x=>x._id===editingId);savedOrder={...orders[idx],...data,_updated:new Date().toISOString()};if(idx>=0)orders[idx]=savedOrder;action='updateOrder';toast('Order updated');}else{data._id=genId();data._created=new Date().toISOString();data._updated='';savedOrder=data;orders.unshift(data);action='createOrder';toast('Order created');}saveLocal();closeModal();populateFilterDropdowns();renderAll();if(sheetsConfigured()){try{isSyncing=true;showSyncIndicator('Saving to Google Sheets…',false);const r=await sheetsPost({action,order:savedOrder});isSyncing=false;if(r.ok)showSyncIndicator('Saved to Google Sheets',false);else{showSyncIndicator('Sheet write failed: '+(r.error||'unknown'),true);}}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}
