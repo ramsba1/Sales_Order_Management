@@ -117,6 +117,9 @@ tr:hover { background: #f8fafc; }
   <div class="top-tab" data-tab="shipping"><span class="tab-icon">&#128666;</span> Shipping</div>
   <div class="top-tab" data-tab="dashboard"><span class="tab-icon">&#128200;</span> Dashboard</div>
   <div class="top-tab" data-tab="refdata"><span class="tab-icon">&#128193;</span> Reference Data</div>
+  <div style="margin-left:auto;display:flex;align-items:center;padding:0 12px;gap:8px;">
+    <button class="btn btn-secondary btn-sm" onclick="load()" title="Reload all data from Google Sheets" style="font-size:11px;">&#8635; Sync Sheets</button>
+  </div>
 </div>
 <div class="tab-content active" id="tab-orders">
   <div id="orders-stats"></div><div id="orders-pipeline"></div>
@@ -318,6 +321,10 @@ tr:hover { background: #f8fafc; }
 
 <div class="toast" id="toast"></div>
 <script>
+// ─── GOOGLE SHEETS CONFIG ─────────────────────────────────────────────────────
+// After deploying your Apps Script Web App, paste the URL below:
+const APPS_SCRIPT_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+
 const STORAGE_KEY='sales_orders_v2';
 const STATUSES=['Received','Approved','Sent to 3PL','Prepared','Shipped','Delivered','Invoiced'];
 const STATUS_KEYS=['received','approved','sent-to-3pl','prepared','shipped','delivered','invoiced'];
@@ -332,10 +339,89 @@ let orderFilter='All',orderSearch='',orderSort='orderDate',orderSortDir=-1,order
 let shipSearch='',shipStatusFilter='All',shipSort='expectedShipDate',shipSortDir=-1,shipPage=1;
 let dashPeriod='weekly';const PAGE_SIZE=20;let charts={};
 let activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};
+let isSyncing=false;
 
-function load(){try{let d=localStorage.getItem(STORAGE_KEY);if(!d)d=localStorage.getItem('sales_orders_v1');orders=d?JSON.parse(d):[];}catch(e){orders=[];}}
-function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(orders));}
+// ─── SHEETS API HELPERS ───────────────────────────────────────────────────────
+function sheetsConfigured(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL!=='YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';}
+
+async function sheetsGet(){
+  const res=await fetch(APPS_SCRIPT_URL+'?action=getAll',{redirect:'follow'});
+  return res.json();
+}
+
+async function sheetsPost(payload){
+  const res=await fetch(APPS_SCRIPT_URL,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain'},
+    body:JSON.stringify(payload),
+    redirect:'follow'
+  });
+  return res.json();
+}
+
+function showSyncIndicator(msg,isError){
+  let el=document.getElementById('syncIndicator');
+  if(!el){
+    el=document.createElement('div');
+    el.id='syncIndicator';
+    el.style.cssText='position:fixed;top:8px;right:12px;z-index:9999;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;transition:opacity 0.4s;display:flex;align-items:center;gap:6px;';
+    document.body.appendChild(el);
+  }
+  el.style.opacity='1';
+  el.style.background=isError?'#fef2f2':isSyncing?'#eff6ff':'#f0fdf4';
+  el.style.color=isError?'#dc2626':isSyncing?'#2563eb':'#16a34a';
+  el.style.border=`1px solid ${isError?'#fecaca':isSyncing?'#bfdbfe':'#bbf7d0'}`;
+  el.innerHTML=`<span>${isSyncing?'⟳':'✓'}</span> ${msg}`;
+  if(!isSyncing)setTimeout(()=>{el.style.opacity='0';},2500);
+}
+
+// ─── DATA LOAD / SAVE ────────────────────────────────────────────────────────
 function genId(){return'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,6);}
+
+// Local cache (fallback + instant rendering)
+function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(orders));localStorage.setItem('sales_refdata_v1',JSON.stringify(refData));}
+function loadLocal(){
+  try{let d=localStorage.getItem(STORAGE_KEY);if(!d)d=localStorage.getItem('sales_orders_v1');orders=d?JSON.parse(d):[];}catch(e){orders=[];}
+  try{const d=localStorage.getItem('sales_refdata_v1');if(d)refData=JSON.parse(d);}catch(e){}
+}
+
+async function load(){
+  loadLocal(); // show cached data immediately
+  renderAll();
+  if(!sheetsConfigured()){
+    showSyncIndicator('Google Sheets not connected',true);
+    return;
+  }
+  try{
+    isSyncing=true;
+    showSyncIndicator('Loading from Google Sheets…',false);
+    const data=await sheetsGet();
+    if(!data.ok)throw new Error(data.error||'Unknown error');
+    orders=data.orders||[];
+    if(data.refData){
+      refData=data.refData;
+      if(!refData.skus)refData.skus=[];
+      if(!refData.customers)refData.customers=[];
+      if(!refData.carriers)refData.carriers=[];
+      if(!refData.warehouses)refData.warehouses=[];
+    }
+    saveLocal();
+    isSyncing=false;
+    showSyncIndicator('Synced with Google Sheets',false);
+    renderAll();
+    updateDataLists();
+    renderRefData();
+  }catch(err){
+    isSyncing=false;
+    showSyncIndicator('Sheets error: '+err.message,true);
+    console.error('Sheets load error:',err);
+  }
+}
+
+async function save(){
+  saveLocal(); // always keep local cache fresh
+  // (individual create/update/delete handle sheet writes)
+}
 
 // Tab handler moved to bottom of script (supports refdata tab)
 
@@ -381,9 +467,9 @@ function openNewOrder(){editingId=null;clearForm();document.getElementById('moda
 function editOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;editingId=id;FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)el.value=o[f]||'';});document.getElementById('modalTitle').textContent='Edit Order';document.getElementById('orderModal').classList.add('open');}
 function closeModal(){document.getElementById('orderModal').classList.remove('open');}
 function clearForm(){FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)el.value='';});}
-function saveOrder(){const oi=document.getElementById('f_orderId').value.trim();const cn=document.getElementById('f_customerName').value.trim();const od=document.getElementById('f_orderDate').value;if(!oi||!cn||!od){alert('Order ID, Customer Name, and Order Date are required.');return;}const data={};FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)data[f]=el.value;});const q=parseFloat(data.quantity)||0,p=parseFloat(data.unitPrice)||0;if(q&&p&&!parseFloat(data.totalValue))data.totalValue=(q*p).toFixed(2);if(editingId){const idx=orders.findIndex(x=>x._id===editingId);if(idx>=0)orders[idx]={...orders[idx],...data,_updated:new Date().toISOString()};toast('Order updated');}else{data._id=genId();data._created=new Date().toISOString();orders.unshift(data);toast('Order created');}save();closeModal();populateFilterDropdowns();renderAll();}
-function deleteOrder(id){if(!confirm('Delete this order?'))return;orders=orders.filter(x=>x._id!==id);save();renderAll();toast('Order deleted');}
-function advanceStatus(id){const o=orders.find(x=>x._id===id);if(!o)return;const ns=nextSt(o.status);if(ns){o.status=ns;o._updated=new Date().toISOString();save();renderAll();toast(`Status → ${ns}`);}}
+async function saveOrder(){const oi=document.getElementById('f_orderId').value.trim();const cn=document.getElementById('f_customerName').value.trim();const od=document.getElementById('f_orderDate').value;if(!oi||!cn||!od){alert('Order ID, Customer Name, and Order Date are required.');return;}const data={};FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)data[f]=el.value;});const q=parseFloat(data.quantity)||0,p=parseFloat(data.unitPrice)||0;if(q&&p&&!parseFloat(data.totalValue))data.totalValue=(q*p).toFixed(2);let action,savedOrder;if(editingId){const idx=orders.findIndex(x=>x._id===editingId);savedOrder={...orders[idx],...data,_updated:new Date().toISOString()};if(idx>=0)orders[idx]=savedOrder;action='updateOrder';toast('Order updated');}else{data._id=genId();data._created=new Date().toISOString();data._updated='';savedOrder=data;orders.unshift(data);action='createOrder';toast('Order created');}saveLocal();closeModal();populateFilterDropdowns();renderAll();if(sheetsConfigured()){try{isSyncing=true;showSyncIndicator('Saving to Google Sheets…',false);const r=await sheetsPost({action,order:savedOrder});isSyncing=false;if(r.ok)showSyncIndicator('Saved to Google Sheets',false);else{showSyncIndicator('Sheet write failed: '+(r.error||'unknown'),true);}}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}
+async function deleteOrder(id){if(!confirm('Delete this order?'))return;orders=orders.filter(x=>x._id!==id);saveLocal();renderAll();toast('Order deleted');if(sheetsConfigured()){try{isSyncing=true;showSyncIndicator('Deleting from Google Sheets…',false);const r=await sheetsPost({action:'deleteOrder',_id:id});isSyncing=false;if(r.ok)showSyncIndicator('Deleted from Google Sheets',false);else showSyncIndicator('Sheet delete failed: '+(r.error||'unknown'),true);}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}
+async function advanceStatus(id){const o=orders.find(x=>x._id===id);if(!o)return;const ns=nextSt(o.status);if(ns){o.status=ns;o._updated=new Date().toISOString();saveLocal();renderAll();toast(`Status → ${ns}`);if(sheetsConfigured()){try{isSyncing=true;showSyncIndicator('Updating Google Sheets…',false);const r=await sheetsPost({action:'updateOrder',order:o});isSyncing=false;if(r.ok)showSyncIndicator('Saved to Google Sheets',false);else showSyncIndicator('Sheet update failed: '+(r.error||'unknown'),true);}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}}
 document.getElementById('f_quantity').addEventListener('input',autoCalc);document.getElementById('f_unitPrice').addEventListener('input',autoCalc);
 function autoCalc(){const q=parseFloat(document.getElementById('f_quantity').value)||0,p=parseFloat(document.getElementById('f_unitPrice').value)||0;if(q&&p)document.getElementById('f_totalValue').value=(q*p).toFixed(2);}
 
@@ -407,7 +493,7 @@ function showMappings(){document.getElementById('csvStep1').style.display='none'
 csvHeaders.forEach((h,i)=>{const hl=h.toLowerCase().trim();for(const[f,a]of Object.entries(aliases)){if(a.includes(hl)&&!Object.values(gm).includes(f)){gm[i]=f;break;}}});
 let html='';csvHeaders.forEach((h,i)=>{html+=`<div class="mapping-row"><label>${esc(h)}</label><select id="map_${i}"><option value="">— Skip —</option>`;FIELDS.forEach(f=>{html+=`<option value="${f}" ${gm[i]===f?'selected':''}>${FIELD_LABELS[f]}</option>`;});html+='</select></div>';});document.getElementById('csvMappings').innerHTML=html;
 let prev='<table><thead><tr>'+csvHeaders.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>';csvData.slice(0,5).forEach(row=>{prev+='<tr>'+row.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>';});prev+='</tbody></table>';if(csvData.length>5)prev+=`<p style="color:#94a3b8;margin-top:4px">...and ${csvData.length-5} more rows</p>`;document.getElementById('csvPreview').innerHTML=prev;}
-function importCsv(){const mapping={};csvHeaders.forEach((h,i)=>{const sel=document.getElementById('map_'+i);if(sel&&sel.value)mapping[i]=sel.value;});let imp=0;csvData.forEach(row=>{const data={_id:genId(),_created:new Date().toISOString(),status:'Received'};for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}if(data.orderId||data.customerName){orders.unshift(data);imp++;}});save();closeCsvModal();populateFilterDropdowns();renderAll();toast(`Imported ${imp} orders`);}
+async function importCsv(){const mapping={};csvHeaders.forEach((h,i)=>{const sel=document.getElementById('map_'+i);if(sel&&sel.value)mapping[i]=sel.value;});let imp=0;csvData.forEach(row=>{const data={_id:genId(),_created:new Date().toISOString(),_updated:'',status:'Received'};for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}if(data.orderId||data.customerName){orders.unshift(data);imp++;}});saveLocal();closeCsvModal();populateFilterDropdowns();renderAll();toast(`Imported ${imp} orders`);if(sheetsConfigured()&&imp>0){try{isSyncing=true;showSyncIndicator('Syncing to Google Sheets…',false);const r=await sheetsPost({action:'syncOrders',orders});isSyncing=false;if(r.ok)showSyncIndicator(`Synced ${imp} orders to Sheets`,false);else showSyncIndicator('Sync failed: '+(r.error||'unknown'),true);}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}
 
 function toggleExport(){document.getElementById('exportMenu').classList.toggle('show');}
 document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document.getElementById('exportMenu')?.classList.remove('show');});
@@ -417,31 +503,42 @@ function downloadFile(content,name,type){const b=new Blob([content],{type});cons
 
 function renderAll(){renderOrders();renderShipping();if(document.getElementById('tab-dashboard').classList.contains('active'))renderDashboard();updateDataLists();}
 
-// ─── REFERENCE DATA ─────────────────────────────────────────────────────────
-const REF_KEY='sales_refdata_v1';
+// ─── REFERENCE DATA ──────────────────────────────────────────────────────────
 let refData={skus:[],customers:[],carriers:[],warehouses:[]};
 
-function loadRefData(){try{const d=localStorage.getItem(REF_KEY);if(d)refData=JSON.parse(d);}catch(e){}}
-function saveRefData(){localStorage.setItem(REF_KEY,JSON.stringify(refData));}
+function loadRefData(){} // now handled in load() via Sheets
+async function saveRefData(){
+  localStorage.setItem('sales_refdata_v1',JSON.stringify(refData));
+  if(sheetsConfigured()){
+    try{
+      isSyncing=true;
+      showSyncIndicator('Saving reference data…',false);
+      const r=await sheetsPost({action:'saveRefData',refData});
+      isSyncing=false;
+      if(r.ok)showSyncIndicator('Reference data saved',false);
+      else showSyncIndicator('RefData save failed: '+(r.error||'unknown'),true);
+    }catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}
+  }
+}
 
-function addRefItem(cat,inputId){
+async function addRefItem(cat,inputId){
   const inp=document.getElementById(inputId);
   const val=(inp.value||'').trim();
   if(!val)return;
   if(refData[cat].includes(val)){toast('Already exists');return;}
   refData[cat].push(val);
   refData[cat].sort((a,b)=>a.localeCompare(b));
-  saveRefData();
   inp.value='';
   renderRefData();
   updateDataLists();
+  await saveRefData();
 }
 
-function removeRefItem(cat,val){
+async function removeRefItem(cat,val){
   refData[cat]=refData[cat].filter(x=>x!==val);
-  saveRefData();
   renderRefData();
   updateDataLists();
+  await saveRefData();
 }
 
 function renderRefData(){
@@ -540,10 +637,11 @@ function showShipMappings(){
   document.getElementById('shipCsvPreview').innerHTML=prev;
 }
 
-function importShipCsv(){
+async function importShipCsv(){
   const mapping={};
   shipCsvHeaders.forEach((h,i)=>{const sel=document.getElementById('smap_'+i);if(sel&&sel.value)mapping[i]=sel.value;});
   let updated=0,skipped=0;
+  const updatedOrders=[];
   shipCsvData.forEach(row=>{
     const data={};
     for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}
@@ -551,12 +649,24 @@ function importShipCsv(){
     const idx=orders.findIndex(o=>o.orderId===data.orderId);
     if(idx<0){skipped++;return;}
     orders[idx]={...orders[idx],...data,_updated:new Date().toISOString()};
+    updatedOrders.push(orders[idx]);
     updated++;
   });
-  save();
+  saveLocal();
   closeShipCsvModal();
   renderAll();
-  toast(`Updated ${updated} shipment(s)${skipped?`, skipped ${skipped}`:''}`);}
+  toast(`Updated ${updated} shipment(s)${skipped?`, skipped ${skipped}`:''}`);
+  if(sheetsConfigured()&&updated>0){
+    try{
+      isSyncing=true;
+      showSyncIndicator('Syncing shipping to Google Sheets…',false);
+      // Update each changed order individually
+      for(const o of updatedOrders){await sheetsPost({action:'updateOrder',order:o});}
+      isSyncing=false;
+      showSyncIndicator(`Synced ${updated} shipment(s) to Sheets`,false);
+    }catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}
+  }
+}
 
 // ─── DASHBOARD FILTER ────────────────────────────────────────────────────────
 let dashFilter=null; // {type:'month'|'week', year:YYYY, month:MM} or {type:'week', year:YYYY, week:WW}
@@ -664,7 +774,12 @@ renderDashboard=function(){
 // ─── TAB HANDLER: include refdata tab ───────────────────────────────────────
 document.querySelectorAll('.top-tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.top-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));tab.classList.add('active');document.getElementById('tab-'+tab.dataset.tab).classList.add('active');if(tab.dataset.tab==='dashboard'){populateDashFilter();renderDashboard();}if(tab.dataset.tab==='refdata')renderRefData();});});
 
-load();loadRefData();updateDataLists();populateFilterDropdowns();renderOrders();renderShipping();
+// ─── INIT ────────────────────────────────────────────────────────────────────
+load(); // async: loads local cache first, then fetches from Sheets
+updateDataLists();
+populateFilterDropdowns();
+renderOrders();
+renderShipping();
 </script>
 </body>
 </html>
