@@ -108,6 +108,9 @@ tr:hover { background: #f8fafc; }
 .toast { position: fixed; bottom: 20px; right: 20px; background: #1e293b; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 12px; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
 .toast.show { opacity: 1; }
 .late-flag { color: #ef4444; font-size: 10px; font-weight: 700; margin-left: 4px; }
+.refdata-tab { transition: all 0.2s; }
+.refdata-tab:hover { color: #6366f1 !important; }
+.refdata-content { transition: opacity 0.2s; }
 ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 </style>
 </head>
@@ -116,6 +119,10 @@ tr:hover { background: #f8fafc; }
   <div class="top-tab active" data-tab="orders"><span class="tab-icon">&#128203;</span> Orders</div>
   <div class="top-tab" data-tab="shipping"><span class="tab-icon">&#128666;</span> Shipping</div>
   <div class="top-tab" data-tab="dashboard"><span class="tab-icon">&#128200;</span> Dashboard</div>
+  <div class="top-tab" data-tab="refdata"><span class="tab-icon">&#128193;</span> Reference Data</div>
+  <div style="margin-left:auto;display:flex;align-items:center;padding:0 12px;gap:8px;">
+    <button class="btn btn-secondary btn-sm" onclick="load()" title="Reload all data from Google Sheets" style="font-size:11px;">&#8635; Sync Sheets</button>
+  </div>
 </div>
 <div class="tab-content active" id="tab-orders">
   <div id="orders-stats"></div><div id="orders-pipeline"></div>
@@ -130,38 +137,52 @@ tr:hover { background: #f8fafc; }
     <div class="filter-grid">
       <div class="filter-group">
         <label>Customer Name</label>
-        <select id="filterCustomerName">
-          <option value="">-- All Customers --</option>
+        <select id="filterCustomerName" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>SKU</label>
-        <select id="filterSku">
-          <option value="">-- All SKUs --</option>
+        <select id="filterSku" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>Status</label>
-        <select id="filterStatus">
-          <option value="">-- All Statuses --</option>
+        <select id="filterStatus" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>Order Date</label>
-        <select id="filterOrderDate">
-          <option value="">-- All Order Dates --</option>
+        <select id="filterOrderDate" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>PO Due Date</label>
-        <select id="filterPoDueDate">
-          <option value="">-- All PO Due Dates --</option>
+        <select id="filterPoDueDate" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-group">
         <label>Quantity</label>
-        <select id="filterQuantity">
-          <option value="">-- All Quantities --</option>
+        <select id="filterQuantity" multiple size="4" style="height:auto;min-height:80px;">
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Carrier Name</label>
+        <select id="filterCarrierName" multiple size="4" style="height:auto;min-height:80px;">
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Warehouse Name</label>
+        <select id="filterWarehouseName" multiple size="4" style="height:auto;min-height:80px;">
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Actual Ship Date</label>
+        <select id="filterActualShipDate" multiple size="4" style="height:auto;min-height:80px;">
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Actual Delivery Date</label>
+        <select id="filterActualDeliveryDate" multiple size="4" style="height:auto;min-height:80px;">
         </select>
       </div>
       <div class="filter-actions" style="grid-column: 1 / -1;">
@@ -177,13 +198,86 @@ tr:hover { background: #f8fafc; }
   <div class="toolbar">
     <input type="text" id="shippingSearch" placeholder="Search by order ID, warehouse, carrier, tracking..." oninput="shipSearch=this.value;shipPage=1;renderShipping()">
     <select id="shipStatusFilter" onchange="shipStatusFilter=this.value;shipPage=1;renderShipping()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;background:#fff">
-      <option value="All">All Statuses</option><option value="Sent to 3PL">Sent to 3PL</option><option value="Prepared">Prepared</option><option value="Shipped">Shipped</option><option value="Delivered">Delivered</option>
+      <option value="All">All Statuses</option><option value="Sent to 3PL">Sent to 3PL</option><option value="Shipped">Shipped</option><option value="Delivered">Delivered</option>
     </select>
+    <button class="btn btn-secondary" onclick="downloadShipTemplate()">&#8657; Download Template</button>
+    <button class="btn btn-secondary" onclick="openShipCsvModal()">&#8659; Import CSV</button>
+    <button class="btn btn-secondary" onclick="exportShipCsv()">&#8657; Export CSV</button>
   </div>
   <div id="shipping-table"></div>
+  <div class="modal-overlay" id="shipCsvModal"><div class="modal">
+  <div class="modal-header"><h2>Import Shipping Data from CSV</h2><button class="modal-close" onclick="closeShipCsvModal()">&times;</button></div>
+  <div class="modal-body">
+    <div id="shipCsvStep1"><div class="csv-drop" id="shipCsvDrop" onclick="document.getElementById('shipCsvFile').click()"><div class="icon">&#128196;</div><p>Drop a CSV file here or click to browse</p><input type="file" id="shipCsvFile" accept=".csv,.tsv,.txt"></div></div>
+    <div id="shipCsvStep2" style="display:none"><p style="font-size:12px;color:#64748b;margin-bottom:12px;">Map your CSV columns to shipping fields.</p><div id="shipCsvMappings"></div><div class="csv-preview" id="shipCsvPreview"></div></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="closeShipCsvModal()">Cancel</button><button class="btn btn-success" id="btnShipImport" style="display:none" onclick="importShipCsv()">Import Shipping Data</button></div>
+  </div></div>
+</div>
+<div class="tab-content" id="tab-refdata">
+  <div style="max-width:1000px;margin:0 auto;">
+    <p style="color:#64748b;font-size:13px;margin-bottom:16px;">Manage reusable dropdown options. These appear as suggestions when entering data in the order form.</p>
+
+    <!-- RefData Sub-tabs -->
+    <div style="display:flex;background:#fff;border-bottom:2px solid #e2e8f0;margin-bottom:16px;border-radius:10px 10px 0 0;overflow:hidden;">
+      <button class="refdata-tab active" onclick="switchRefDataTab('skus')" style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-weight:600;color:#6366f1;border-bottom:3px solid #6366f1;">SKUs</button>
+      <button class="refdata-tab" onclick="switchRefDataTab('customers')" style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-weight:600;color:#64748b;border-bottom:3px solid transparent;">Customers</button>
+      <button class="refdata-tab" onclick="switchRefDataTab('carriers')" style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-weight:600;color:#64748b;border-bottom:3px solid transparent;">Carriers</button>
+      <button class="refdata-tab" onclick="switchRefDataTab('warehouses')" style="flex:1;padding:12px;border:none;background:none;cursor:pointer;font-weight:600;color:#64748b;border-bottom:3px solid transparent;">Warehouses</button>
+    </div>
+
+    <!-- SKUs Tab Content -->
+    <div id="refdata-skus-content" class="refdata-content active" style="background:#fff;border-radius:0 0 10px 10px;padding:16px;">
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <input id="new_sku" placeholder="Add SKU..." style="flex:1;padding:10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+        <button class="btn btn-primary" onclick="addRefItem('skus','new_sku')">+ Add SKU</button>
+      </div>
+      <div style="color:#94a3b8;font-size:12px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.3px;">Existing SKUs</div>
+      <ul id="list_skus" style="list-style:none;padding:0;max-height:300px;overflow-y:auto;"></ul>
+    </div>
+
+    <!-- Customers Tab Content -->
+    <div id="refdata-customers-content" class="refdata-content" style="background:#fff;border-radius:0 0 10px 10px;padding:16px;display:none;">
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <input id="new_customers" placeholder="Add customer name..." style="flex:1;padding:10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+        <button class="btn btn-primary" onclick="addRefItem('customers','new_customers')">+ Add Customer</button>
+      </div>
+      <div style="color:#94a3b8;font-size:12px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.3px;">Existing Customers</div>
+      <ul id="list_customers" style="list-style:none;padding:0;max-height:300px;overflow-y:auto;"></ul>
+    </div>
+
+    <!-- Carriers Tab Content -->
+    <div id="refdata-carriers-content" class="refdata-content" style="background:#fff;border-radius:0 0 10px 10px;padding:16px;display:none;">
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <input id="new_carriers" placeholder="Add carrier name..." style="flex:1;padding:10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+        <button class="btn btn-primary" onclick="addRefItem('carriers','new_carriers')">+ Add Carrier</button>
+      </div>
+      <div style="color:#94a3b8;font-size:12px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.3px;">Existing Carriers</div>
+      <ul id="list_carriers" style="list-style:none;padding:0;max-height:300px;overflow-y:auto;"></ul>
+    </div>
+
+    <!-- Warehouses Tab Content -->
+    <div id="refdata-warehouses-content" class="refdata-content" style="background:#fff;border-radius:0 0 10px 10px;padding:16px;display:none;">
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <input id="new_warehouses" placeholder="Add warehouse name..." style="flex:1;padding:10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+        <button class="btn btn-primary" onclick="addRefItem('warehouses','new_warehouses')">+ Add Warehouse</button>
+      </div>
+      <div style="color:#94a3b8;font-size:12px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.3px;">Existing Warehouses</div>
+      <ul id="list_warehouses" style="list-style:none;padding:0;max-height:300px;overflow-y:auto;"></ul>
+    </div>
+  </div>
 </div>
 <div class="tab-content" id="tab-dashboard">
-  <div class="period-toggle"><button class="period-btn active" onclick="setPeriod('weekly')">Weekly</button><button class="period-btn" onclick="setPeriod('monthly')">Monthly</button></div>
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:12px;">
+    <div class="period-toggle" style="margin-bottom:0"><button class="period-btn active" onclick="setPeriod('weekly')">Weekly</button><button class="period-btn" onclick="setPeriod('monthly')">Monthly</button></div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <label style="font-size:12px;font-weight:600;color:#64748b;white-space:nowrap;">Filter Period:</label>
+      <select id="dashFilterSel" onchange="onDashFilterChange()" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;min-width:160px;">
+        <option value="">— Show All —</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="clearDashFilter()">Clear</button>
+    </div>
+  </div>
   <div id="dash-stats"></div>
   <div class="chart-grid">
     <div class="chart-card"><h3>Orders Over Time</h3><div class="chart-container"><canvas id="chartOrdersTime"></canvas></div></div>
@@ -199,17 +293,17 @@ tr:hover { background: #f8fafc; }
   <div class="form-section"><h3>Order Details</h3><div class="form-grid">
     <div class="form-group"><label>Order ID *</label><input id="f_orderId" placeholder="e.g. ORD-001"></div>
     <div class="form-group"><label>Order Date *</label><input id="f_orderDate" type="date"></div>
-    <div class="form-group"><label>Customer Name (Retailer) *</label><input id="f_customerName" placeholder="Retailer name"></div>
+    <div class="form-group"><label>Customer Name (Retailer) *</label><input id="f_customerName" placeholder="Retailer name" list="dl_customers"></div>
     <div class="form-group"><label>Delivery City</label><input id="f_deliveryCity" placeholder="City name"></div>
     <div class="form-group"><label>Status</label><select id="f_status">
       <option value="Received">Order Received</option><option value="Approved">Order Approved</option>
-      <option value="Sent to 3PL">Sent to 3PL</option><option value="Prepared">Warehouse Prepared</option>
+      <option value="Sent to 3PL">Sent to 3PL</option>
       <option value="Shipped">Shipped</option><option value="Delivered">Delivered / Picked Up</option>
       <option value="Invoiced">Invoiced</option>
     </select></div>
   </div></div>
   <div class="form-section"><h3>Product &amp; Financials</h3><div class="form-grid">
-    <div class="form-group"><label>SKU (Stock Keeping Unit)</label><input id="f_sku" placeholder="SKU code"></div>
+    <div class="form-group"><label>SKU (Stock Keeping Unit)</label><input id="f_sku" placeholder="SKU code" list="dl_skus"></div>
     <div class="form-group"><label>Quantity</label><input id="f_quantity" type="number" min="1" placeholder="0"></div>
     <div class="form-group"><label>Unit Price</label><input id="f_unitPrice" type="number" step="0.01" placeholder="0.00"></div>
     <div class="form-group"><label>Total Value (Gross)</label><input id="f_totalValue" type="number" step="0.01" placeholder="Auto-calculated"></div>
@@ -222,11 +316,12 @@ tr:hover { background: #f8fafc; }
   </div></div>
   <div class="form-section"><h3>Shipping &amp; Logistics</h3><div class="form-grid">
     <div class="form-group"><label>Sent to Warehouse Date</label><input id="f_sentToWarehouseDate" type="date"></div>
-    <div class="form-group"><label>Warehouse Name</label><input id="f_warehouseName" placeholder="Warehouse name"></div>
+    <div class="form-group"><label>Warehouse Name</label><input id="f_warehouseName" placeholder="Warehouse name" list="dl_warehouses"></div>
     <div class="form-group"><label>Expected Ship Date</label><input id="f_expectedShipDate" type="date"></div>
     <div class="form-group"><label>Expected Delivery Date</label><input id="f_expectedDeliveryDate" type="date"></div>
-    <div class="form-group"><label>Carrier Name</label><input id="f_carrierName" placeholder="e.g. FedEx, UPS"></div>
+    <div class="form-group"><label>Carrier Name</label><input id="f_carrierName" placeholder="e.g. FedEx, UPS" list="dl_carriers"></div>
     <div class="form-group"><label>Carrier Tracking #</label><input id="f_carrierTracking" placeholder="Tracking number"></div>
+    <div class="form-group full"><label>Tracking URL</label><input id="f_carrierTrackingUrl" placeholder="https://track.carrier.com/..."></div>
     <div class="form-group"><label>Actual Ship Date</label><input id="f_actualShipDate" type="date"></div>
     <div class="form-group"><label>Actual Delivery Date</label><input id="f_actualDeliveryDate" type="date"></div>
   </div></div>
@@ -246,29 +341,133 @@ tr:hover { background: #f8fafc; }
 <div class="modal-body" id="viewBody"></div>
 <div class="modal-footer"><button class="btn btn-secondary" onclick="closeViewModal()">Close</button><button class="btn btn-primary" onclick="editFromView()">Edit</button></div>
 </div></div>
+<!-- Datalists for autocomplete -->
+<datalist id="dl_skus"></datalist>
+<datalist id="dl_customers"></datalist>
+<datalist id="dl_carriers"></datalist>
+<datalist id="dl_warehouses"></datalist>
+<!-- Shipping CSV Import Modal -->
+<div class="modal-overlay" id="shipCsvModal"><div class="modal">
+<div class="modal-header"><h2>Import / Update Shipping from CSV</h2><button class="modal-close" onclick="closeShipCsvModal()">&times;</button></div>
+<div class="modal-body">
+  <p style="font-size:12px;color:#64748b;margin-bottom:12px;">Upload a CSV with an <strong>Order ID</strong> column to update shipping fields in bulk. Existing orders will be updated; unrecognised Order IDs are skipped.</p>
+  <button class="btn btn-secondary btn-sm" onclick="downloadShipTemplate()" style="margin-bottom:12px;">&#8659; Download Template CSV</button>
+  <div id="shipCsvStep1"><div class="csv-drop" id="shipCsvDrop" onclick="document.getElementById('shipCsvFile').click()"><div class="icon">&#128196;</div><p>Drop a CSV file here or click to browse</p><input type="file" id="shipCsvFile" accept=".csv,.tsv,.txt"></div></div>
+  <div id="shipCsvStep2" style="display:none"><p style="font-size:12px;color:#64748b;margin-bottom:12px;">Map your CSV columns to shipping fields.</p><div id="shipCsvMappings"></div><div class="csv-preview" id="shipCsvPreview"></div></div>
+</div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="closeShipCsvModal()">Cancel</button><button class="btn btn-success" id="btnShipImport" style="display:none" onclick="importShipCsv()">Update Shipping</button></div>
+</div></div>
 <div class="toast" id="toast"></div>
 <script>
+// ─── GOOGLE SHEETS CONFIG ─────────────────────────────────────────────────────
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwhd8ktTaktZ708GrqYINPVWZffbehwxVV_Rt-yvWOLsvSRp-YrDoiDAOMZtNI0VSh9/exec';
 const STORAGE_KEY='sales_orders_v2';
-const STATUSES=['Received','Approved','Sent to 3PL','Prepared','Shipped','Delivered','Invoiced'];
-const STATUS_KEYS=['received','approved','sent-to-3pl','prepared','shipped','delivered','invoiced'];
-const STATUS_COLORS=['#6366f1','#8b5cf6','#f59e0b','#06b6d4','#3b82f6','#10b981','#059669'];
-const FIELDS=['orderId','orderDate','customerName','deliveryCity','status','sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate','invoiceNumber','invoiceDate','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate'];
-const FIELD_LABELS={orderId:'Order ID',orderDate:'Order Date',customerName:'Customer Name (Retailer)',deliveryCity:'Delivery City',status:'Status',sku:'SKU',quantity:'Quantity',unitPrice:'Unit Price',totalValue:'Total Value (Gross)',poDueDate:'PO Due Date',routingDueDate:'Routing Due Date',invoiceNumber:'Invoice #',invoiceDate:'Invoice Date',sentToWarehouseDate:'Sent to Warehouse',warehouseName:'Warehouse Name',expectedShipDate:'Expected Ship',expectedDeliveryDate:'Expected Delivery',carrierName:'Carrier Name',carrierTracking:'Carrier Tracking #',actualShipDate:'Actual Ship Date',actualDeliveryDate:'Actual Delivery Date'};
+const STATUSES=['Received','Approved','Sent to 3PL','Shipped','Delivered','Invoiced'];
+const STATUS_KEYS=['received','approved','sent-to-3pl','shipped','delivered','invoiced'];
+const STATUS_COLORS=['#6366f1','#8b5cf6','#f59e0b','#3b82f6','#10b981','#059669'];
+const FIELDS=['orderId','orderDate','customerName','deliveryCity','status','sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate','invoiceNumber','invoiceDate','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','carrierTrackingUrl','actualShipDate','actualDeliveryDate'];
+const FIELD_LABELS={orderId:'Order ID',orderDate:'Order Date',customerName:'Customer Name (Retailer)',deliveryCity:'Delivery City',status:'Status',sku:'SKU',quantity:'Quantity',unitPrice:'Unit Price',totalValue:'Total Value (Gross)',poDueDate:'PO Due Date',routingDueDate:'Routing Due Date',invoiceNumber:'Invoice #',invoiceDate:'Invoice Date',sentToWarehouseDate:'Sent to Warehouse',warehouseName:'Warehouse Name',expectedShipDate:'Expected Ship',expectedDeliveryDate:'Expected Delivery',carrierName:'Carrier Name',carrierTracking:'Carrier Tracking #',carrierTrackingUrl:'Tracking URL',actualShipDate:'Actual Ship Date',actualDeliveryDate:'Actual Delivery Date'};
 const ORDER_TABLE_FIELDS=['orderId','orderDate','customerName','deliveryCity','sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate','invoiceNumber','invoiceDate'];
-const SHIP_TABLE_FIELDS=['orderId','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate'];
-
+const SHIP_TABLE_FIELDS=['orderId','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','carrierTrackingUrl','actualShipDate','actualDeliveryDate'];
 let orders=[],editingId=null,viewingId=null;
 let orderFilter='All',orderSearch='',orderSort='orderDate',orderSortDir=-1,orderPage=1;
 let shipSearch='',shipStatusFilter='All',shipSort='expectedShipDate',shipSortDir=-1,shipPage=1;
 let dashPeriod='weekly';const PAGE_SIZE=20;let charts={};
-let activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};
-
-function load(){try{let d=localStorage.getItem(STORAGE_KEY);if(!d)d=localStorage.getItem('sales_orders_v1');orders=d?JSON.parse(d):[];}catch(e){orders=[];}}
-function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(orders));}
+let activeFilters={orderDate:[],poDueDate:[],customerName:[],sku:[],quantity:[],status:[],carrierName:[],warehouseName:[],actualShipDate:[],actualDeliveryDate:[]};
+let isSyncing=false;
+// ─── SHEETS API HELPERS ───────────────────────────────────────────────────────
+function sheetsConfigured(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL!=='YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';}
+async function sheetsGet(){
+  const res=await fetch(APPS_SCRIPT_URL+'?action=getAll',{redirect:'follow'});
+  return res.json();
+}
+async function sheetsPost(payload){
+  const res=await fetch(APPS_SCRIPT_URL,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain'},
+    body:JSON.stringify(payload),
+    redirect:'follow'
+  });
+  return res.json();
+}
+function showSyncIndicator(msg,isError){
+  let el=document.getElementById('syncIndicator');
+  if(!el){
+    el=document.createElement('div');
+    el.id='syncIndicator';
+    el.style.cssText='position:fixed;top:8px;right:12px;z-index:9999;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;transition:opacity 0.4s;display:flex;align-items:center;gap:6px;';
+    document.body.appendChild(el);
+  }
+  el.style.opacity='1';
+  el.style.background=isError?'#fef2f2':isSyncing?'#eff6ff':'#f0fdf4';
+  el.style.color=isError?'#dc2626':isSyncing?'#2563eb':'#16a34a';
+  el.style.border=`1px solid ${isError?'#fecaca':isSyncing?'#bfdbfe':'#bbf7d0'}`;
+  el.innerHTML=`<span>${isSyncing?'⟳':'✓'}</span> ${msg}`;
+  if(!isSyncing)setTimeout(()=>{el.style.opacity='0';},2500);
+}
+// ─── DATA LOAD / SAVE ────────────────────────────────────────────────────────
 function genId(){return'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,6);}
-
-document.querySelectorAll('.top-tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.top-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));tab.classList.add('active');document.getElementById('tab-'+tab.dataset.tab).classList.add('active');if(tab.dataset.tab==='dashboard')renderDashboard();});});
-
+function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(orders));localStorage.setItem('sales_refdata_v1',JSON.stringify(refData));}
+function loadLocal(){
+  try{let d=localStorage.getItem(STORAGE_KEY);if(!d)d=localStorage.getItem('sales_orders_v1');orders=d?JSON.parse(d):[];}catch(e){orders=[];}
+  try{const d=localStorage.getItem('sales_refdata_v1');if(d)refData=JSON.parse(d);}catch(e){}
+}
+async function load(){
+  loadLocal();
+  renderAll();
+  if(!sheetsConfigured()){
+    showSyncIndicator('Google Sheets not connected',true);
+    return;
+  }
+  try{
+    isSyncing=true;
+    showSyncIndicator('Loading from Google Sheets…',false);
+    const data=await sheetsGet();
+    if(!data.ok)throw new Error(data.error||'Unknown error');
+    orders=data.orders||[];
+    if(data.refData){
+      refData=data.refData;
+      if(!refData.skus)refData.skus=[];
+      if(!refData.customers)refData.customers=[];
+      if(!refData.carriers)refData.carriers=[];
+      if(!refData.warehouses)refData.warehouses=[];
+    }
+    saveLocal();
+    isSyncing=false;
+    showSyncIndicator('Synced with Google Sheets',false);
+    renderAll();
+    updateDataLists();
+    renderRefData();
+  }catch(err){
+    isSyncing=false;
+    showSyncIndicator('Sheets error: '+err.message,true);
+    console.error('Sheets load error:',err);
+  }
+}
+async function save(){
+  saveLocal();
+}
+// ─── DATE FORMATTING FUNCTION ─────────────────────────────────────────────────
+function formatDate(dateVal){
+  if(!dateVal)return'—';
+  const d=new Date(dateVal);
+  if(isNaN(d.getTime()))return'—';
+  const month=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  const year=d.getFullYear();
+  return `${month}-${day}-${year}`;
+}
+// ─── ISO DATE FORMAT FOR FILTERS ──────────────────────────────────────────────
+function formatDateISO(dateVal){
+  if(!dateVal)return'';
+  const d=new Date(dateVal);
+  if(isNaN(d.getTime()))return'';
+  const month=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  const year=d.getFullYear();
+  return `${year}-${month}-${day}`;
+}
+// ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
 function fmt(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function sKey(s){return(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');}
@@ -277,13 +476,11 @@ function sIcon(f,sf,sd){return sf===f?(sd===1?'&#9650;':'&#9660;'):'';}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 function formatCell(field,val){if(!val)return'—';if(field==='totalValue'||field==='unitPrice')return'$'+fmt(parseFloat(val)||0);if(field==='status')return`<span class="status-badge badge-${sKey(val)}">${val}</span>`;return esc(val);}
 function sortCompare(a,b,field,dir){let va=a[field]||'',vb=b[field]||'';if(['totalValue','quantity','unitPrice'].includes(field)){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}else if(field==='status'){va=STATUSES.indexOf(va);vb=STATUSES.indexOf(vb);}else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}return va<vb?-dir:va>vb?dir:0;}
-
 function toggleFilterPanel(){document.getElementById('filterPanel').style.display=document.getElementById('filterPanel').style.display==='none'?'block':'none';populateFilterDropdowns();}
-function populateFilterDropdowns(){const customers=new Set(),skus=new Set(),statuses=new Set(),orderDates=new Set(),poDueDates=new Set(),quantities=new Set();orders.forEach(o=>{if(o.customerName)customers.add(o.customerName);if(o.sku)skus.add(o.sku);if(o.status)statuses.add(o.status);if(o.orderDate)orderDates.add(o.orderDate);if(o.poDueDate)poDueDates.add(o.poDueDate);if(o.quantity)quantities.add(o.quantity);});const custSel=document.getElementById('filterCustomerName');const skuSel=document.getElementById('filterSku');const statSel=document.getElementById('filterStatus');const orderDateSel=document.getElementById('filterOrderDate');const poDueDateSel=document.getElementById('filterPoDueDate');const qtySel=document.getElementById('filterQuantity');const curCust=custSel.value,curSku=skuSel.value,curStat=statSel.value,curOrderDate=orderDateSel.value,curPoDueDate=poDueDateSel.value,curQty=qtySel.value;custSel.innerHTML='<option value="">-- All Customers --</option>';Array.from(customers).sort().forEach(c=>{custSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});custSel.value=curCust;skuSel.innerHTML='<option value="">-- All SKUs --</option>';Array.from(skus).sort().forEach(s=>{skuSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});skuSel.value=curSku;statSel.innerHTML='<option value="">-- All Statuses --</option>';STATUSES.forEach(s=>{if(statuses.has(s))statSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});statSel.value=curStat;orderDateSel.innerHTML='<option value="">-- All Order Dates --</option>';Array.from(orderDates).sort().forEach(d=>{orderDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});orderDateSel.value=curOrderDate;poDueDateSel.innerHTML='<option value="">-- All PO Due Dates --</option>';Array.from(poDueDates).sort().forEach(d=>{poDueDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:d}));});poDueDateSel.value=curPoDueDate;qtySel.innerHTML='<option value="">-- All Quantities --</option>';Array.from(quantities).sort((a,b)=>parseFloat(a)-parseFloat(b)).forEach(q=>{qtySel.appendChild(Object.assign(document.createElement('option'),{value:q,textContent:q}));});qtySel.value=curQty;}
-function applyFilters(){activeFilters.customerName=document.getElementById('filterCustomerName').value;activeFilters.sku=document.getElementById('filterSku').value;activeFilters.status=document.getElementById('filterStatus').value;activeFilters.orderDate=document.getElementById('filterOrderDate').value;activeFilters.poDueDate=document.getElementById('filterPoDueDate').value;activeFilters.quantity=document.getElementById('filterQuantity').value;orderPage=1;renderOrders();toast('Filters applied');}
-function clearFilters(){activeFilters={orderDate:'',poDueDate:'',customerName:'',sku:'',quantity:'',status:''};document.getElementById('filterOrderDate').value='';document.getElementById('filterPoDueDate').value='';document.getElementById('filterCustomerName').value='';document.getElementById('filterSku').value='';document.getElementById('filterQuantity').value='';document.getElementById('filterStatus').value='';orderPage=1;renderOrders();toast('Filters cleared');}
-function applyActiveFilters(list){if(activeFilters.customerName){list=list.filter(o=>o.customerName===activeFilters.customerName);}if(activeFilters.sku){list=list.filter(o=>o.sku===activeFilters.sku);}if(activeFilters.status){list=list.filter(o=>o.status===activeFilters.status);}if(activeFilters.orderDate){list=list.filter(o=>o.orderDate===activeFilters.orderDate);}if(activeFilters.poDueDate){list=list.filter(o=>o.poDueDate===activeFilters.poDueDate);}if(activeFilters.quantity){list=list.filter(o=>o.quantity===activeFilters.quantity);}return list;}
-
+function populateFilterDropdowns(){const customers=new Set(),skus=new Set(),statuses=new Set(),orderDates=new Map(),poDueDates=new Map(),quantities=new Set(),carriers=new Set(),warehouses=new Set(),actualShipDates=new Map(),actualDeliveryDates=new Map();orders.forEach(o=>{if(o.customerName)customers.add(o.customerName);if(o.sku)skus.add(o.sku);if(o.status)statuses.add(o.status);if(o.orderDate){const isoDate=formatDateISO(o.orderDate);orderDates.set(isoDate,formatDate(o.orderDate));}if(o.poDueDate){const isoDate=formatDateISO(o.poDueDate);poDueDates.set(isoDate,formatDate(o.poDueDate));}if(o.quantity)quantities.add(o.quantity);if(o.carrierName)carriers.add(o.carrierName);if(o.warehouseName)warehouses.add(o.warehouseName);if(o.actualShipDate){const isoDate=formatDateISO(o.actualShipDate);actualShipDates.set(isoDate,formatDate(o.actualShipDate));}if(o.actualDeliveryDate){const isoDate=formatDateISO(o.actualDeliveryDate);actualDeliveryDates.set(isoDate,formatDate(o.actualDeliveryDate));}});const custSel=document.getElementById('filterCustomerName');const skuSel=document.getElementById('filterSku');const statSel=document.getElementById('filterStatus');const orderDateSel=document.getElementById('filterOrderDate');const poDueDateSel=document.getElementById('filterPoDueDate');const qtySel=document.getElementById('filterQuantity');const carrierSel=document.getElementById('filterCarrierName');const warehouseSel=document.getElementById('filterWarehouseName');const actualShipSel=document.getElementById('filterActualShipDate');const actualDeliverySel=document.getElementById('filterActualDeliveryDate');const curCust=custSel.value,curSku=skuSel.value,curStat=statSel.value,curOrderDate=orderDateSel.value,curPoDueDate=poDueDateSel.value,curQty=qtySel.value,curCarrier=carrierSel.value,curWarehouse=warehouseSel.value,curActualShip=actualShipSel.value,curActualDelivery=actualDeliverySel.value;custSel.innerHTML='<option value="">-- All Customers --</option>';Array.from(customers).sort().forEach(c=>{custSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});custSel.value=curCust;skuSel.innerHTML='<option value="">-- All SKUs --</option>';Array.from(skus).sort().forEach(s=>{skuSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});skuSel.value=curSku;statSel.innerHTML='<option value="">-- All Statuses --</option>';STATUSES.forEach(s=>{if(statuses.has(s))statSel.appendChild(Object.assign(document.createElement('option'),{value:s,textContent:s}));});statSel.value=curStat;orderDateSel.innerHTML='<option value="">-- All Order Dates --</option>';Array.from(orderDates.keys()).sort().forEach(d=>{orderDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:orderDates.get(d)}));});orderDateSel.value=curOrderDate;poDueDateSel.innerHTML='<option value="">-- All PO Due Dates --</option>';Array.from(poDueDates.keys()).sort().forEach(d=>{poDueDateSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:poDueDates.get(d)}));});poDueDateSel.value=curPoDueDate;qtySel.innerHTML='<option value="">-- All Quantities --</option>';Array.from(quantities).sort((a,b)=>parseFloat(a)-parseFloat(b)).forEach(q=>{qtySel.appendChild(Object.assign(document.createElement('option'),{value:q,textContent:q}));});qtySel.value=curQty;carrierSel.innerHTML='<option value="">-- All Carriers --</option>';Array.from(carriers).sort().forEach(c=>{carrierSel.appendChild(Object.assign(document.createElement('option'),{value:c,textContent:c}));});carrierSel.value=curCarrier;warehouseSel.innerHTML='<option value="">-- All Warehouses --</option>';Array.from(warehouses).sort().forEach(w=>{warehouseSel.appendChild(Object.assign(document.createElement('option'),{value:w,textContent:w}));});warehouseSel.value=curWarehouse;actualShipSel.innerHTML='<option value="">-- All Actual Ship Dates --</option>';Array.from(actualShipDates.keys()).sort().forEach(d=>{actualShipSel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:actualShipDates.get(d)}));});actualShipSel.value=curActualShip;actualDeliverySel.innerHTML='<option value="">-- All Actual Delivery Dates --</option>';Array.from(actualDeliveryDates.keys()).sort().forEach(d=>{actualDeliverySel.appendChild(Object.assign(document.createElement('option'),{value:d,textContent:actualDeliveryDates.get(d)}));});actualDeliverySel.value=curActualDelivery;}
+function applyFilters(){activeFilters.customerName=Array.from(document.getElementById('filterCustomerName').selectedOptions).map(o=>o.value);activeFilters.sku=Array.from(document.getElementById('filterSku').selectedOptions).map(o=>o.value);activeFilters.status=Array.from(document.getElementById('filterStatus').selectedOptions).map(o=>o.value);activeFilters.orderDate=Array.from(document.getElementById('filterOrderDate').selectedOptions).map(o=>o.value);activeFilters.poDueDate=Array.from(document.getElementById('filterPoDueDate').selectedOptions).map(o=>o.value);activeFilters.quantity=Array.from(document.getElementById('filterQuantity').selectedOptions).map(o=>o.value);activeFilters.carrierName=Array.from(document.getElementById('filterCarrierName').selectedOptions).map(o=>o.value);activeFilters.warehouseName=Array.from(document.getElementById('filterWarehouseName').selectedOptions).map(o=>o.value);activeFilters.actualShipDate=Array.from(document.getElementById('filterActualShipDate').selectedOptions).map(o=>o.value);activeFilters.actualDeliveryDate=Array.from(document.getElementById('filterActualDeliveryDate').selectedOptions).map(o=>o.value);orderPage=1;renderOrders();toast('Filters applied');}
+function clearFilters(){activeFilters={orderDate:[],poDueDate:[],customerName:[],sku:[],quantity:[],status:[],carrierName:[],warehouseName:[],actualShipDate:[],actualDeliveryDate:[]};document.getElementById('filterOrderDate').selectedIndex=-1;document.getElementById('filterPoDueDate').selectedIndex=-1;document.getElementById('filterCustomerName').selectedIndex=-1;document.getElementById('filterSku').selectedIndex=-1;document.getElementById('filterQuantity').selectedIndex=-1;document.getElementById('filterStatus').selectedIndex=-1;document.getElementById('filterCarrierName').selectedIndex=-1;document.getElementById('filterWarehouseName').selectedIndex=-1;document.getElementById('filterActualShipDate').selectedIndex=-1;document.getElementById('filterActualDeliveryDate').selectedIndex=-1;Array.from(document.getElementById('filterOrderDate').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterPoDueDate').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterCustomerName').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterSku').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterQuantity').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterStatus').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterCarrierName').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterWarehouseName').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterActualShipDate').options).forEach(o=>o.selected=false);Array.from(document.getElementById('filterActualDeliveryDate').options).forEach(o=>o.selected=false);orderPage=1;renderOrders();toast('Filters cleared');}
+function applyActiveFilters(list){if(activeFilters.customerName&&activeFilters.customerName.length>0){list=list.filter(o=>activeFilters.customerName.includes(o.customerName));}if(activeFilters.sku&&activeFilters.sku.length>0){list=list.filter(o=>activeFilters.sku.includes(o.sku));}if(activeFilters.status&&activeFilters.status.length>0){list=list.filter(o=>activeFilters.status.includes(o.status));}if(activeFilters.orderDate&&activeFilters.orderDate.length>0){list=list.filter(o=>activeFilters.orderDate.includes(formatDateISO(o.orderDate)));}if(activeFilters.poDueDate&&activeFilters.poDueDate.length>0){list=list.filter(o=>activeFilters.poDueDate.includes(formatDateISO(o.poDueDate)));}if(activeFilters.quantity&&activeFilters.quantity.length>0){list=list.filter(o=>activeFilters.quantity.includes(o.quantity));}if(activeFilters.carrierName&&activeFilters.carrierName.length>0){list=list.filter(o=>activeFilters.carrierName.includes(o.carrierName));}if(activeFilters.warehouseName&&activeFilters.warehouseName.length>0){list=list.filter(o=>activeFilters.warehouseName.includes(o.warehouseName));}if(activeFilters.actualShipDate&&activeFilters.actualShipDate.length>0){list=list.filter(o=>activeFilters.actualShipDate.includes(formatDateISO(o.actualShipDate)));}if(activeFilters.actualDeliveryDate&&activeFilters.actualDeliveryDate.length>0){list=list.filter(o=>activeFilters.actualDeliveryDate.includes(formatDateISO(o.actualDeliveryDate)));}return list;}
 function renderOrders(){
   const sc={};STATUSES.forEach(s=>sc[s]=0);orders.forEach(o=>{if(sc[o.status]!==undefined)sc[o.status]++;});
   const tv=orders.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);
@@ -297,66 +494,27 @@ function renderOrders(){
   list.sort((a,b)=>sortCompare(a,b,orderSort,orderSortDir));
   const tp=Math.max(1,Math.ceil(list.length/PAGE_SIZE));if(orderPage>tp)orderPage=tp;const page=list.slice((orderPage-1)*PAGE_SIZE,orderPage*PAGE_SIZE);
   if(list.length===0){document.getElementById('orders-table').innerHTML=`<div class="empty"><div class="icon">&#128230;</div><p>${orders.length===0?'No orders yet. Create one or import from CSV.':'No orders match your filters.'}</p></div>`;return;}
-  document.getElementById('orders-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${ORDER_TABLE_FIELDS.map(f=>`<th onclick="toggleOSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,orderSort,orderSortDir)}</th>`).join('')}<th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr>${ORDER_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f==='totalValue')return`<td style="font-weight:600">${formatCell(f,o[f])}</td>`;return`<td>${formatCell(f,o[f])}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button><button class="btn btn-danger btn-xs" onclick="deleteOrder('${o._id}')" title="Delete">&#10005;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(orderPage-1)*PAGE_SIZE+1}–${Math.min(orderPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${orderPage<=1?'disabled':''} onclick="orderPage--;renderOrders()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${orderPage>=tp?'disabled':''} onclick="orderPage++;renderOrders()">Next &#8594;</button></div></div>`;
+  document.getElementById('orders-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${ORDER_TABLE_FIELDS.map(f=>`<th onclick="toggleOSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,orderSort,orderSortDir)}</th>`).join('')}<th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr>${ORDER_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f.includes('Date'))return`<td>${formatDate(o[f])}</td>`;if(f==='totalValue')return`<td style="font-weight:600">${formatCell(f,o[f])}</td>`;return`<td>${formatCell(f,o[f])}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button><button class="btn btn-danger btn-xs" onclick="deleteOrder('${o._id}')" title="Delete">&#10005;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(orderPage-1)*PAGE_SIZE+1}–${Math.min(orderPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${orderPage<=1?'disabled':''} onclick="orderPage--;renderOrders()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${orderPage>=tp?'disabled':''} onclick="orderPage++;renderOrders()">Next &#8594;</button></div></div>`;
 }
 function toggleOSort(f){if(orderSort===f)orderSortDir*=-1;else{orderSort=f;orderSortDir=1;}renderOrders();}
-
-function renderShipping(){
-  const inTransit=orders.filter(o=>o.status==='Shipped').length;const awaiting=orders.filter(o=>o.status==='Sent to 3PL'||o.status==='Prepared').length;const delivered=orders.filter(o=>o.status==='Delivered'||o.status==='Invoiced').length;const late=orders.filter(o=>o.expectedDeliveryDate&&new Date(o.expectedDeliveryDate)<new Date()&&!o.actualDeliveryDate&&!['Delivered','Invoiced'].includes(o.status)).length;
-  document.getElementById('shipping-stats').innerHTML=`<div class="stats-row"><div class="stat-card sc-sent-to-3pl"><div class="value">${awaiting}</div><div class="label">Awaiting Shipment</div></div><div class="stat-card sc-shipped"><div class="value">${inTransit}</div><div class="label">In Transit</div></div><div class="stat-card sc-delivered"><div class="value">${delivered}</div><div class="label">Delivered</div></div><div class="stat-card" style="--accent:${late>0?'#ef4444':'#10b981'}"><div class="value">${late}</div><div class="label">Late / Overdue</div></div></div>`;
-  let list=shipStatusFilter==='All'?[...orders]:orders.filter(o=>o.status===shipStatusFilter);
-  if(shipSearch.trim()){const q=shipSearch.toLowerCase();list=list.filter(o=>[o.orderId,o.warehouseName,o.carrierName,o.carrierTracking,o.customerName].some(v=>v&&v.toLowerCase().includes(q)));}
-  list.sort((a,b)=>sortCompare(a,b,shipSort,shipSortDir));
-  const tp=Math.max(1,Math.ceil(list.length/PAGE_SIZE));if(shipPage>tp)shipPage=tp;const page=list.slice((shipPage-1)*PAGE_SIZE,shipPage*PAGE_SIZE);
-  const isLate=(o)=>o.expectedDeliveryDate&&new Date(o.expectedDeliveryDate)<new Date()&&!o.actualDeliveryDate&&!['Delivered','Invoiced'].includes(o.status);
-  if(list.length===0){document.getElementById('shipping-table').innerHTML=`<div class="empty"><div class="icon">&#128666;</div><p>No shipments match your filters.</p></div>`;return;}
-  document.getElementById('shipping-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${SHIP_TABLE_FIELDS.map(f=>`<th onclick="toggleSSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,shipSort,shipSortDir)}</th>`).join('')}<th onclick="toggleSSort('status')">Status ${sIcon('status',shipSort,shipSortDir)}</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr${isLate(o)?' style="background:#fef2f2"':''}>${SHIP_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f==='carrierTracking')return`<td style="font-family:monospace;font-size:11px">${esc(o[f]||'—')}</td>`;if(f==='expectedDeliveryDate')return`<td>${o[f]||'—'}${isLate(o)?'<span class="late-flag">LATE</span>':''}</td>`;return`<td>${o[f]||'—'}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(shipPage-1)*PAGE_SIZE+1}–${Math.min(shipPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${shipPage<=1?'disabled':''} onclick="shipPage--;renderShipping()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${shipPage>=tp?'disabled':''} onclick="shipPage++;renderShipping()">Next &#8594;</button></div></div>`;
-}
 function toggleSSort(f){if(shipSort===f)shipSortDir*=-1;else{shipSort=f;shipSortDir=1;}renderShipping();}
-
-function setPeriod(p){dashPeriod=p;document.querySelectorAll('.period-btn').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase()===p));renderDashboard();}
-function renderDashboard(){
-  const now=new Date();const ps=new Date(now);if(dashPeriod==='weekly')ps.setDate(now.getDate()-7);else ps.setMonth(now.getMonth()-1);
-  const pvs=new Date(ps);if(dashPeriod==='weekly')pvs.setDate(pvs.getDate()-7);else pvs.setMonth(pvs.getMonth()-1);
-  const po=orders.filter(o=>o.orderDate&&new Date(o.orderDate)>=ps);const pvo=orders.filter(o=>o.orderDate&&new Date(o.orderDate)>=pvs&&new Date(o.orderDate)<ps);
-  const pr=po.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);const pvr=pvo.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);
-  const avg=po.length?pr/po.length:0;const ot=pvo.length?((po.length-pvo.length)/pvo.length*100):0;const rt=pvr?((pr-pvr)/pvr*100):0;
-  const th=(v)=>v>=0?`<span class="trend-up">+${v.toFixed(1)}%</span>`:`<span class="trend-down">${v.toFixed(1)}%</span>`;
-  const pl=dashPeriod==='weekly'?'This Week':'This Month';
-  document.getElementById('dash-stats').innerHTML=`<div class="stats-row"><div class="stat-card sc-received"><div class="value">${po.length}</div><div class="label">${pl} Orders ${pvo.length?th(ot):''}</div></div><div class="stat-card sc-shipped"><div class="value">$${fmt(pr)}</div><div class="label">${pl} Revenue ${pvr?th(rt):''}</div></div><div class="stat-card sc-approved"><div class="value">$${fmt(avg)}</div><div class="label">Avg Order Value</div></div><div class="stat-card sc-delivered"><div class="value">${orders.filter(o=>o.actualDeliveryDate).length}</div><div class="label">Delivered (All Time)</div></div></div>`;
-  Object.values(charts).forEach(c=>c.destroy());charts={};const tb=getTimeBuckets(dashPeriod);
-  const obt=tb.map(b=>orders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b)).length);
-  charts.ordersTime=new Chart(document.getElementById('chartOrdersTime'),{type:'bar',data:{labels:tb.map(b=>b.label),datasets:[{label:'Orders',data:obt,backgroundColor:'#6366f1',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
-  const rbt=tb.map(b=>orders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b)).reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0));
-  charts.revenueTime=new Chart(document.getElementById('chartRevenueTime'),{type:'line',data:{labels:tb.map(b=>b.label),datasets:[{label:'Revenue',data:rbt,borderColor:'#10b981',backgroundColor:'rgba(16,185,129,0.1)',fill:true,tension:0.3,pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
-  const sd=STATUSES.map(s=>orders.filter(o=>o.status===s).length);
-  charts.statusDist=new Chart(document.getElementById('chartStatusDist'),{type:'doughnut',data:{labels:STATUSES,datasets:[{data:sd,backgroundColor:STATUS_COLORS}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}});
-  const custRev={};orders.forEach(o=>{if(o.customerName){custRev[o.customerName]=(custRev[o.customerName]||0)+(parseFloat(o.totalValue)||0);}});const topCust=Object.entries(custRev).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  charts.topCustomers=new Chart(document.getElementById('chartTopCustomers'),{type:'bar',data:{labels:topCust.map(c=>c[0]),datasets:[{label:'Revenue',data:topCust.map(c=>c[1]),backgroundColor:'#8b5cf6',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
-  document.getElementById('reportTitle').textContent=dashPeriod==='weekly'?'Weekly Breakdown':'Monthly Breakdown';
-  let tbl=`<table class="report-table"><thead><tr><th>Period</th><th>Orders</th><th>Revenue</th><th>Avg Value</th><th>Shipped</th><th>Delivered</th></tr></thead><tbody>`;
-  tb.forEach(b=>{const bo=orders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b));const br=bo.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);const ba=bo.length?br/bo.length:0;const bs=bo.filter(o=>o.actualShipDate).length;const bd=bo.filter(o=>o.actualDeliveryDate).length;tbl+=`<tr><td style="font-weight:600">${b.label}</td><td>${bo.length}</td><td>$${fmt(br)}</td><td>$${fmt(ba)}</td><td>${bs}</td><td>${bd}</td></tr>`;});
-  tbl+='</tbody></table>';document.getElementById('reportTable').innerHTML=tbl;
-}
+function setPeriod(p){dashPeriod=p;document.querySelectorAll('.period-btn').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase()===p));dashFilter=null;if(document.getElementById('dashFilterSel'))document.getElementById('dashFilterSel').value='';renderDashboard();}
 function getTimeBuckets(period){const b=[];const now=new Date();if(period==='weekly'){for(let i=7;i>=0;i--){const s=new Date(now);s.setDate(now.getDate()-i*7);const e=new Date(s);e.setDate(s.getDate()+6);b.push({start:s,end:e,label:`Wk ${s.getMonth()+1}/${s.getDate()}`});}}else{for(let i=5;i>=0;i--){const s=new Date(now.getFullYear(),now.getMonth()-i,1);const e=new Date(now.getFullYear(),now.getMonth()-i+1,0);b.push({start:s,end:e,label:s.toLocaleString('en-US',{month:'short',year:'2-digit'})});}}return b;}
 function isInBucket(ds,b){const d=new Date(ds);return d>=b.start&&d<=b.end;}
-
 function openNewOrder(){editingId=null;clearForm();document.getElementById('modalTitle').textContent='New Order';document.getElementById('f_orderDate').value=new Date().toISOString().split('T')[0];document.getElementById('f_status').value='Received';document.getElementById('orderModal').classList.add('open');}
-function editOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;editingId=id;FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)el.value=o[f]||'';});document.getElementById('modalTitle').textContent='Edit Order';document.getElementById('orderModal').classList.add('open');}
+function editOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;editingId=id;FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el){let val=o[f]||'';if(f.includes('Date')&&val){const d=new Date(val);if(!isNaN(d))val=d.toISOString().split('T')[0];}el.value=val;}});document.getElementById('modalTitle').textContent='Edit Order';document.getElementById('orderModal').classList.add('open');}
 function closeModal(){document.getElementById('orderModal').classList.remove('open');}
 function clearForm(){FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)el.value='';});}
-function saveOrder(){const oi=document.getElementById('f_orderId').value.trim();const cn=document.getElementById('f_customerName').value.trim();const od=document.getElementById('f_orderDate').value;if(!oi||!cn||!od){alert('Order ID, Customer Name, and Order Date are required.');return;}const data={};FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)data[f]=el.value;});const q=parseFloat(data.quantity)||0,p=parseFloat(data.unitPrice)||0;if(q&&p&&!parseFloat(data.totalValue))data.totalValue=(q*p).toFixed(2);if(editingId){const idx=orders.findIndex(x=>x._id===editingId);if(idx>=0)orders[idx]={...orders[idx],...data,_updated:new Date().toISOString()};toast('Order updated');}else{data._id=genId();data._created=new Date().toISOString();orders.unshift(data);toast('Order created');}save();closeModal();populateFilterDropdowns();renderAll();}
-function deleteOrder(id){if(!confirm('Delete this order?'))return;orders=orders.filter(x=>x._id!==id);save();renderAll();toast('Order deleted');}
-function advanceStatus(id){const o=orders.find(x=>x._id===id);if(!o)return;const ns=nextSt(o.status);if(ns){o.status=ns;o._updated=new Date().toISOString();save();renderAll();toast(`Status → ${ns}`);}}
+async function saveOrder(){const oi=document.getElementById('f_orderId').value.trim();const cn=document.getElementById('f_customerName').value.trim();const od=document.getElementById('f_orderDate').value;if(!oi||!cn||!od){alert('Order ID, Customer Name, and Order Date are required.');return;}const data={};FIELDS.forEach(f=>{const el=document.getElementById('f_'+f);if(el)data[f]=el.value;});const q=parseFloat(data.quantity)||0,p=parseFloat(data.unitPrice)||0;if(q&&p&&!parseFloat(data.totalValue))data.totalValue=(q*p).toFixed(2);let action,savedOrder;if(editingId){const idx=orders.findIndex(x=>x._id===editingId);savedOrder={...orders[idx],...data,_updated:new Date().toISOString()};if(idx>=0)orders[idx]=savedOrder;action='updateOrder';toast('Order updated');}else{data._id=genId();data._created=new Date().toISOString();data._updated='';savedOrder=data;orders.unshift(data);action='createOrder';toast('Order created');}saveLocal();closeModal();populateFilterDropdowns();renderAll();if(sheetsConfigured()){try{isSyncing=true;showSyncIndicator('Saving to Google Sheets…',false);const r=await sheetsPost({action,order:savedOrder});isSyncing=false;if(r.ok)showSyncIndicator('Saved to Google Sheets',false);else{showSyncIndicator('Sheet write failed: '+(r.error||'unknown'),true);}}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}
+async function deleteOrder(id){if(!confirm('Delete this order?'))return;orders=orders.filter(x=>x._id!==id);saveLocal();renderAll();toast('Order deleted');if(sheetsConfigured()){try{isSyncing=true;showSyncIndicator('Deleting from Google Sheets…',false);const r=await sheetsPost({action:'deleteOrder',_id:id});isSyncing=false;if(r.ok)showSyncIndicator('Deleted from Google Sheets',false);else showSyncIndicator('Sheet delete failed: '+(r.error||'unknown'),true);}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}
+async function advanceStatus(id){const o=orders.find(x=>x._id===id);if(!o)return;const ns=nextSt(o.status);if(ns){o.status=ns;o._updated=new Date().toISOString();saveLocal();renderAll();toast(`Status → ${ns}`);if(sheetsConfigured()){try{isSyncing=true;showSyncIndicator('Updating Google Sheets…',false);const r=await sheetsPost({action:'updateOrder',order:o});isSyncing=false;if(r.ok)showSyncIndicator('Saved to Google Sheets',false);else showSyncIndicator('Sheet update failed: '+(r.error||'unknown'),true);}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}}
 document.getElementById('f_quantity').addEventListener('input',autoCalc);document.getElementById('f_unitPrice').addEventListener('input',autoCalc);
 function autoCalc(){const q=parseFloat(document.getElementById('f_quantity').value)||0,p=parseFloat(document.getElementById('f_unitPrice').value)||0;if(q&&p)document.getElementById('f_totalValue').value=(q*p).toFixed(2);}
-
 function viewOrder(id){const o=orders.find(x=>x._id===id);if(!o)return;viewingId=id;document.getElementById('viewTitle').textContent=`Order ${o.orderId}`;const ci=STATUSES.indexOf(o.status);let html='<div style="display:flex;gap:2px;margin-bottom:16px;flex-wrap:wrap">';STATUSES.forEach((s,i)=>{const done=i<=ci;html+=`<div style="padding:4px 10px;border-radius:12px;font-size:10px;font-weight:600;${done?'background:#6366f1;color:#fff':'background:#f1f5f9;color:#94a3b8'}">${s}</div>`;});html+='</div>';
-[{title:'Order Details',fields:['orderId','orderDate','customerName','deliveryCity']},{title:'Product & Financials',fields:['sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate']},{title:'Invoice',fields:['invoiceNumber','invoiceDate']},{title:'Shipping & Logistics',fields:['sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate']}].forEach(sec=>{html+=`<div class="form-section"><h3>${sec.title}</h3><div class="form-grid">`;sec.fields.forEach(f=>{let val=o[f]||'—';if((f==='totalValue'||f==='unitPrice')&&o[f])val='$'+fmt(parseFloat(o[f]));html+=`<div class="form-group"><label>${FIELD_LABELS[f]}</label><div style="padding:5px 0;font-size:13px">${esc(String(val))}</div></div>`;});html+='</div></div>';});
+[{title:'Order Details',fields:['orderId','orderDate','customerName','deliveryCity']},{title:'Product & Financials',fields:['sku','quantity','unitPrice','totalValue','poDueDate','routingDueDate']},{title:'Invoice',fields:['invoiceNumber','invoiceDate']},{title:'Shipping & Logistics',fields:['sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','actualShipDate','actualDeliveryDate']}].forEach(sec=>{html+=`<div class="form-section"><h3>${sec.title}</h3><div class="form-grid">`;sec.fields.forEach(f=>{let val=o[f]||'—';if((f==='totalValue'||f==='unitPrice')&&o[f])val='$'+fmt(parseFloat(o[f]));if(f.includes('Date')&&o[f])val=formatDate(o[f]);html+=`<div class="form-group"><label>${FIELD_LABELS[f]}</label><div style="padding:5px 0;font-size:13px">${esc(String(val))}</div></div>`;});html+='</div></div>';});
 document.getElementById('viewBody').innerHTML=html;document.getElementById('viewModal').classList.add('open');}
 function closeViewModal(){document.getElementById('viewModal').classList.remove('open');}
 function editFromView(){closeViewModal();editOrder(viewingId);}
-
 let csvData=[],csvHeaders=[];
 function openCsvModal(){csvData=[];csvHeaders=[];document.getElementById('csvStep1').style.display='';document.getElementById('csvStep2').style.display='none';document.getElementById('btnImport').style.display='none';document.getElementById('csvFile').value='';document.getElementById('csvModal').classList.add('open');}
 function closeCsvModal(){document.getElementById('csvModal').classList.remove('open');}
@@ -371,16 +529,273 @@ function showMappings(){document.getElementById('csvStep1').style.display='none'
 csvHeaders.forEach((h,i)=>{const hl=h.toLowerCase().trim();for(const[f,a]of Object.entries(aliases)){if(a.includes(hl)&&!Object.values(gm).includes(f)){gm[i]=f;break;}}});
 let html='';csvHeaders.forEach((h,i)=>{html+=`<div class="mapping-row"><label>${esc(h)}</label><select id="map_${i}"><option value="">— Skip —</option>`;FIELDS.forEach(f=>{html+=`<option value="${f}" ${gm[i]===f?'selected':''}>${FIELD_LABELS[f]}</option>`;});html+='</select></div>';});document.getElementById('csvMappings').innerHTML=html;
 let prev='<table><thead><tr>'+csvHeaders.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>';csvData.slice(0,5).forEach(row=>{prev+='<tr>'+row.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>';});prev+='</tbody></table>';if(csvData.length>5)prev+=`<p style="color:#94a3b8;margin-top:4px">...and ${csvData.length-5} more rows</p>`;document.getElementById('csvPreview').innerHTML=prev;}
-function importCsv(){const mapping={};csvHeaders.forEach((h,i)=>{const sel=document.getElementById('map_'+i);if(sel&&sel.value)mapping[i]=sel.value;});let imp=0;csvData.forEach(row=>{const data={_id:genId(),_created:new Date().toISOString(),status:'Received'};for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}if(data.orderId||data.customerName){orders.unshift(data);imp++;}});save();closeCsvModal();populateFilterDropdowns();renderAll();toast(`Imported ${imp} orders`);}
-
+async function importCsv(){const mapping={};csvHeaders.forEach((h,i)=>{const sel=document.getElementById('map_'+i);if(sel&&sel.value)mapping[i]=sel.value;});let imp=0;csvData.forEach(row=>{const data={_id:genId(),_created:new Date().toISOString(),_updated:'',status:'Received'};for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}if(data.orderId||data.customerName){orders.unshift(data);imp++;}});saveLocal();closeCsvModal();populateFilterDropdowns();renderAll();toast(`Imported ${imp} orders`);if(sheetsConfigured()&&imp>0){try{isSyncing=true;showSyncIndicator('Syncing to Google Sheets…',false);const r=await sheetsPost({action:'syncOrders',orders});isSyncing=false;if(r.ok)showSyncIndicator(`Synced ${imp} orders to Sheets`,false);else showSyncIndicator('Sync failed: '+(r.error||'unknown'),true);}catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}}}
 function toggleExport(){document.getElementById('exportMenu').classList.toggle('show');}
 document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document.getElementById('exportMenu')?.classList.remove('show');});
-function exportCsv(){const rows=[FIELDS.map(f=>FIELD_LABELS[f]).join(',')];orders.forEach(o=>{rows.push(FIELDS.map(f=>`"${(o[f]||'').toString().replace(/"/g,'""')}"`).join(','));});downloadFile(rows.join('\n'),'orders_export.csv','text/csv');toast('CSV exported');}
+function exportCsv(){const rows=[[...FIELDS].map(f=>FIELD_LABELS[f]).join(',')];orders.forEach(o=>{rows.push(FIELDS.map(f=>{let val=o[f]||'';if(f.includes('Date')&&val){val=formatDate(val);}else if(f==='totalValue'||f==='unitPrice'){val=parseFloat(val)||0;}val=`"${val.toString().replace(/"/g,'""')}"`;return val;}).join(','));});downloadFile(rows.join('\n'),'orders_export.csv','text/csv');toast('CSV exported');}
 function exportJson(){downloadFile(JSON.stringify(orders,null,2),'orders_export.json','application/json');toast('JSON exported');}
 function downloadFile(content,name,type){const b=new Blob([content],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();URL.revokeObjectURL(a.href);}
+function renderAll(){renderOrders();renderShipping();if(document.getElementById('tab-dashboard').classList.contains('active'))renderDashboard();updateDataLists();}
+let refData={skus:[],customers:[],carriers:[],warehouses:[]};
+async function saveRefData(){
+  localStorage.setItem('sales_refdata_v1',JSON.stringify(refData));
+  if(sheetsConfigured()){
+    try{
+      isSyncing=true;
+      showSyncIndicator('Saving reference data…',false);
+      const r=await sheetsPost({action:'saveRefData',refData});
+      isSyncing=false;
+      if(r.ok)showSyncIndicator('Reference data saved',false);
+      else showSyncIndicator('RefData save failed: '+(r.error||'unknown'),true);
+    }catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}
+  }
+}
+async function addRefItem(cat,inputId){
+  const inp=document.getElementById(inputId);
+  const val=(inp.value||'').trim();
+  if(!val)return;
+  if(refData[cat].includes(val)){toast('Already exists');return;}
+  refData[cat].push(val);
+  refData[cat].sort((a,b)=>a.localeCompare(b));
+  inp.value='';
+  renderRefData();
+  updateDataLists();
+  await saveRefData();
+}
+async function removeRefItem(cat,val){
+  refData[cat]=refData[cat].filter(x=>x!==val);
+  renderRefData();
+  updateDataLists();
+  await saveRefData();
+}
+// ─── REFDATA SUB-TAB SWITCHING ────────────────────────────────────────────────
+function switchRefDataTab(tab){
+  const tabs=['skus','customers','carriers','warehouses'];
+  tabs.forEach(t=>{
+    const btn=event.target;
+    if(event.target.textContent.toLowerCase().includes(t.replace('s',''))||event.target.textContent.toLowerCase()==='customers'||event.target.textContent.toLowerCase()==='warehouses'){
+      document.querySelectorAll('.refdata-content').forEach(c=>c.style.display='none');
+      document.querySelectorAll('.refdata-tab').forEach(b=>{b.style.color='#64748b';b.style.borderBottom='3px solid transparent';});
+      document.getElementById('refdata-'+tab+'-content').style.display='block';
+      event.target.style.color='#6366f1';
+      event.target.style.borderBottom='3px solid #6366f1';
+    }
+  });
+}
 
-function renderAll(){renderOrders();renderShipping();if(document.getElementById('tab-dashboard').classList.contains('active'))renderDashboard();}
-load();populateFilterDropdowns();renderOrders();renderShipping();
+function renderRefData(){
+  const cats={skus:'list_skus',customers:'list_customers',carriers:'list_carriers',warehouses:'list_warehouses'};
+  for(const[cat,listId]of Object.entries(cats)){
+    const ul=document.getElementById(listId);
+    if(!ul)continue;
+    if(refData[cat].length===0){ul.innerHTML='<li style="color:#94a3b8;font-size:12px;padding:4px 0">No items yet.</li>';continue;}
+    ul.innerHTML=refData[cat].map(v=>`<li style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px;"><span>${esc(v)}</span><button class="btn btn-danger btn-xs" onclick="removeRefItem('${cat}','${v.replace(/'/g,"\\'")}')">&#10005;</button></li>`).join('');
+  }
+}
+function updateDataLists(){
+  const map={dl_skus:'skus',dl_customers:'customers',dl_carriers:'carriers',dl_warehouses:'warehouses'};
+  for(const[dlId,cat]of Object.entries(map)){
+    const dl=document.getElementById(dlId);
+    if(!dl)continue;
+    dl.innerHTML=refData[cat].map(v=>`<option value="${esc(v)}">`).join('');
+  }
+}
+['new_sku','new_customers','new_carriers','new_warehouses'].forEach(id=>{
+  document.addEventListener('DOMContentLoaded',()=>{});
+  setTimeout(()=>{
+    const el=document.getElementById(id);
+    if(el){
+      const cat=id.replace('new_','');
+      el.addEventListener('keydown',e=>{if(e.key==='Enter')addRefItem(cat,id);});
+    }
+  },100);
+});
+const SHIP_FIELDS=['orderId','sentToWarehouseDate','warehouseName','expectedShipDate','expectedDeliveryDate','carrierName','carrierTracking','carrierTrackingUrl','actualShipDate','actualDeliveryDate','status'];
+function exportShipCsv(){
+  const rows=[SHIP_FIELDS.map(f=>FIELD_LABELS[f]||f).join(',')];
+  orders.forEach(o=>{rows.push(SHIP_FIELDS.map(f=>`"${(o[f]||'').toString().replace(/"/g,'""')}"`).join(','));});
+  downloadFile(rows.join('\n'),'shipping_export.csv','text/csv');
+  toast('Shipping CSV exported');
+}
+function downloadShipTemplate(){
+  const rows=[SHIP_FIELDS.map(f=>FIELD_LABELS[f]||f).join(','),'ORD-001,2024-01-10,Warehouse A,2024-01-12,2024-01-15,FedEx,1Z999AA10123456784,https://www.fedex.com/fedextrack/?trknbr=1Z999AA10123456784,2024-01-12,2024-01-15,Shipped'];
+  downloadFile(rows.join('\n'),'shipping_template.csv','text/csv');
+  toast('Template downloaded');
+}
+let shipCsvData=[],shipCsvHeaders=[];
+function openShipCsvModal(){
+  shipCsvData=[];shipCsvHeaders=[];
+  document.getElementById('shipCsvStep1').style.display='';
+  document.getElementById('shipCsvStep2').style.display='none';
+  document.getElementById('btnShipImport').style.display='none';
+  document.getElementById('shipCsvFile').value='';
+  document.getElementById('shipCsvModal').classList.add('open');
+}
+function closeShipCsvModal(){document.getElementById('shipCsvModal').classList.remove('open');}
+const shipCsvDrop=document.getElementById('shipCsvDrop');
+shipCsvDrop.addEventListener('dragover',e=>{e.preventDefault();shipCsvDrop.classList.add('dragover');});
+shipCsvDrop.addEventListener('dragleave',()=>shipCsvDrop.classList.remove('dragover'));
+shipCsvDrop.addEventListener('drop',e=>{e.preventDefault();shipCsvDrop.classList.remove('dragover');if(e.dataTransfer.files[0])parseShipCsvFile(e.dataTransfer.files[0]);});
+document.getElementById('shipCsvFile').addEventListener('change',e=>{if(e.target.files[0])parseShipCsvFile(e.target.files[0]);});
+function parseShipCsvFile(file){
+  const r=new FileReader();
+  r.onload=e=>{
+    const text=e.target.result;
+    const sep=text.includes('\t')?'\t':',';
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length<2){alert('CSV needs header + data rows.');return;}
+    shipCsvHeaders=parseRow(lines[0],sep);
+    shipCsvData=lines.slice(1).map(l=>parseRow(l,sep));
+    showShipMappings();
+  };
+  r.readAsText(file);
+}
+function showShipMappings(){
+  document.getElementById('shipCsvStep1').style.display='none';
+  document.getElementById('shipCsvStep2').style.display='';
+  document.getElementById('btnShipImport').style.display='';
+  const aliases={orderId:['order id','order_id','orderid','order #','order number'],sentToWarehouseDate:['sent to warehouse','sent to warehouse date','warehouse sent date'],warehouseName:['warehouse','warehouse name','3pl','fulfillment center'],expectedShipDate:['expected ship','expected ship date','ship date','est ship'],expectedDeliveryDate:['expected delivery','expected delivery date','delivery date','eta'],carrierName:['carrier','carrier name','shipping carrier','courier'],carrierTracking:['tracking','tracking number','tracking #','carrier tracking','carrier tracking #'],carrierTrackingUrl:['tracking url','track url','carrier url','tracking link'],actualShipDate:['actual ship','actual ship date','shipped date'],actualDeliveryDate:['actual delivery','actual delivery date','delivered date'],status:['status','order status']};
+  const gm={};
+  shipCsvHeaders.forEach((h,i)=>{const hl=h.toLowerCase().trim();for(const[f,a]of Object.entries(aliases)){if(a.includes(hl)&&!Object.values(gm).includes(f)){gm[i]=f;break;}}});
+  let html='';
+  shipCsvHeaders.forEach((h,i)=>{html+=`<div class="mapping-row"><label>${esc(h)}</label><select id="smap_${i}"><option value="">— Skip —</option>`;SHIP_FIELDS.forEach(f=>{html+=`<option value="${f}" ${gm[i]===f?'selected':''}>${FIELD_LABELS[f]||f}</option>`;});html+='</select></div>';});
+  document.getElementById('shipCsvMappings').innerHTML=html;
+  let prev='<table><thead><tr>'+shipCsvHeaders.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>';
+  shipCsvData.slice(0,5).forEach(row=>{prev+='<tr>'+row.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>';});
+  prev+='</tbody></table>';
+  if(shipCsvData.length>5)prev+=`<p style="color:#94a3b8;margin-top:4px">...and ${shipCsvData.length-5} more rows</p>`;
+  document.getElementById('shipCsvPreview').innerHTML=prev;
+}
+async function importShipCsv(){
+  const mapping={};
+  shipCsvHeaders.forEach((h,i)=>{const sel=document.getElementById('smap_'+i);if(sel&&sel.value)mapping[i]=sel.value;});
+  let updated=0,skipped=0;
+  const updatedOrders=[];
+  const shippingData=[];
+  shipCsvData.forEach(row=>{
+    const data={};
+    for(const[ci,f]of Object.entries(mapping)){const v=row[parseInt(ci)];if(v!==undefined&&v!=='')data[f]=v;}
+    if(!data.orderId){skipped++;return;}
+    const idx=orders.findIndex(o=>o.orderId===data.orderId);
+    if(idx<0){skipped++;return;}
+    orders[idx]={...orders[idx],...data,_updated:new Date().toISOString()};
+    updatedOrders.push(orders[idx]);
+    shippingData.push(data);
+    updated++;
+  });
+  saveLocal();
+  closeShipCsvModal();
+  renderAll();
+  toast(`Updated ${updated} shipment(s)${skipped?`, skipped ${skipped}`:''}`);
+  if(sheetsConfigured()&&updated>0){
+    try{
+      isSyncing=true;
+      showSyncIndicator('Syncing shipping to Google Sheets…',false);
+      const r=await sheetsPost({action:'syncShipping',shipping:shippingData});
+      for(const o of updatedOrders){await sheetsPost({action:'updateOrder',order:o});}
+      isSyncing=false;
+      showSyncIndicator(`Synced ${updated} shipment(s) to Sheets`,false);
+    }catch(err){isSyncing=false;showSyncIndicator('Sheet error: '+err.message,true);}
+  }
+}
+let dashFilter=null;
+function getWeekNumber(d){const date=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const dayNum=date.getUTCDay()||7;date.setUTCDate(date.getUTCDate()+4-dayNum);const yearStart=new Date(Date.UTC(date.getUTCFullYear(),0,1));return Math.ceil((((date-yearStart)/86400000)+1)/7);}
+function populateDashFilter(){
+  const sel=document.getElementById('dashFilterSel');
+  if(!sel)return;
+  const cur=sel.value;
+  const months=new Map();
+  const weeks=new Map();
+  orders.forEach(o=>{
+    if(!o.orderDate)return;
+    const d=new Date(o.orderDate);
+    if(isNaN(d))return;
+    const yr=d.getFullYear();const mo=d.getMonth();
+    const mKey=`month_${yr}_${mo}`;
+    if(!months.has(mKey))months.set(mKey,{year:yr,month:mo,label:d.toLocaleString('en-US',{month:'long',year:'numeric'})});
+    const wk=getWeekNumber(d);
+    const wKey=`week_${yr}_${wk}`;
+    if(!weeks.has(wKey))weeks.set(wKey,{year:yr,week:wk,label:`Week ${wk}, ${yr}`});
+  });
+  const monthOpts=Array.from(months.values()).sort((a,b)=>b.year-a.year||b.month-a.month);
+  const weekOpts=Array.from(weeks.values()).sort((a,b)=>b.year-a.year||b.week-a.week);
+  sel.innerHTML='<option value="">— Show All —</option>';
+  if(dashPeriod==='monthly'&&monthOpts.length){
+    sel.innerHTML+='<optgroup label="By Month">';
+    monthOpts.forEach(m=>sel.innerHTML+=`<option value="month_${m.year}_${m.month}">${m.label}</option>`);
+    sel.innerHTML+='</optgroup>';
+  }
+  if(dashPeriod==='weekly'&&weekOpts.length){
+    sel.innerHTML+='<optgroup label="By Week">';
+    weekOpts.forEach(w=>sel.innerHTML+=`<option value="week_${w.year}_${w.week}">${w.label}</option>`);
+    sel.innerHTML+='</optgroup>';
+  }
+  if(cur)sel.value=cur;
+}
+function onDashFilterChange(){
+  const val=document.getElementById('dashFilterSel').value;
+  if(!val){dashFilter=null;}
+  else{
+    const parts=val.split('_');
+    if(parts[0]==='month')dashFilter={type:'month',year:parseInt(parts[1]),month:parseInt(parts[2])};
+    else if(parts[0]==='week')dashFilter={type:'week',year:parseInt(parts[1]),week:parseInt(parts[2])};
+  }
+  renderDashboard();
+}
+function clearDashFilter(){dashFilter=null;document.getElementById('dashFilterSel').value='';renderDashboard();}
+function getFilteredOrders(){
+  if(!dashFilter)return orders;
+  if(dashFilter.type==='month'){
+    return orders.filter(o=>{if(!o.orderDate)return false;const d=new Date(o.orderDate);return d.getFullYear()===dashFilter.year&&d.getMonth()===dashFilter.month;});
+  }
+  if(dashFilter.type==='week'){
+    return orders.filter(o=>{if(!o.orderDate)return false;const d=new Date(o.orderDate);return d.getFullYear()===dashFilter.year&&getWeekNumber(d)===dashFilter.week;});
+  }
+  return orders;
+}
+renderShipping=function(){
+  const inTransit=orders.filter(o=>o.status==='Shipped').length;const awaiting=orders.filter(o=>o.status==='Sent to 3PL').length;const delivered=orders.filter(o=>o.status==='Delivered'||o.status==='Invoiced').length;const late=orders.filter(o=>o.expectedDeliveryDate&&new Date(o.expectedDeliveryDate)<new Date()&&!o.actualDeliveryDate&&!['Delivered','Invoiced'].includes(o.status)).length;
+  document.getElementById('shipping-stats').innerHTML=`<div class="stats-row"><div class="stat-card sc-sent-to-3pl"><div class="value">${awaiting}</div><div class="label">Awaiting Shipment</div></div><div class="stat-card sc-shipped"><div class="value">${inTransit}</div><div class="label">In Transit</div></div><div class="stat-card sc-delivered"><div class="value">${delivered}</div><div class="label">Delivered</div></div><div class="stat-card" style="--accent:${late>0?'#ef4444':'#10b981'}"><div class="value">${late}</div><div class="label">Late / Overdue</div></div></div>`;
+  let list=shipStatusFilter==='All'?[...orders]:orders.filter(o=>o.status===shipStatusFilter);
+  if(shipSearch.trim()){const q=shipSearch.toLowerCase();list=list.filter(o=>[o.orderId,o.warehouseName,o.carrierName,o.carrierTracking,o.customerName].some(v=>v&&v.toLowerCase().includes(q)));}
+  list.sort((a,b)=>sortCompare(a,b,shipSort,shipSortDir));
+  const tp=Math.max(1,Math.ceil(list.length/PAGE_SIZE));if(shipPage>tp)shipPage=tp;const page=list.slice((shipPage-1)*PAGE_SIZE,shipPage*PAGE_SIZE);
+  const isLate=(o)=>o.expectedDeliveryDate&&new Date(o.expectedDeliveryDate)<new Date()&&!o.actualDeliveryDate&&!['Delivered','Invoiced'].includes(o.status);
+  if(list.length===0){document.getElementById('shipping-table').innerHTML=`<div class="empty"><div class="icon">&#128666;</div><p>No shipments match your filters.</p></div>`;return;}
+  document.getElementById('shipping-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${SHIP_TABLE_FIELDS.map(f=>`<th onclick="toggleSSort('${f}')">${FIELD_LABELS[f]} ${sIcon(f,shipSort,shipSortDir)}</th>`).join('')}<th onclick="toggleSSort('status')">Status ${sIcon('status',shipSort,shipSortDir)}</th><th>Actions</th></tr></thead><tbody>${page.map(o=>`<tr${isLate(o)?' style="background:#fef2f2"':''}>${SHIP_TABLE_FIELDS.map(f=>{if(f==='orderId')return`<td><a href="#" onclick="viewOrder('${o._id}');return false" style="color:#6366f1;font-weight:600;text-decoration:none">${esc(o.orderId)}</a></td>`;if(f.includes('Date'))return`<td>${formatDate(o[f])}</td>`;if(f==='carrierTracking')return`<td style="font-family:monospace;font-size:11px">${esc(o[f]||'—')}</td>`;if(f==='carrierTrackingUrl')return`<td>${o[f]?`<a href="${esc(o[f])}" target="_blank" rel="noopener" style="color:#6366f1;font-size:11px;display:inline-flex;align-items:center;gap:3px;">&#128279; Track</a>`:'—'}</td>`;if(f==='expectedDeliveryDate')return`<td>${formatDate(o[f])||'—'}${isLate(o)?'<span class="late-flag">LATE</span>':''}</td>`;return`<td>${o[f]||'—'}</td>`;}).join('')}<td><span class="status-badge badge-${sKey(o.status)}">${o.status}</span></td><td style="white-space:nowrap">${nextSt(o.status)?`<button class="btn btn-success btn-xs" onclick="advanceStatus('${o._id}')" title="Advance to ${nextSt(o.status)}">&#9654;</button>`:''}<button class="btn btn-secondary btn-xs" onclick="editOrder('${o._id}')" title="Edit">&#9998;</button></td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>Showing ${(shipPage-1)*PAGE_SIZE+1}–${Math.min(shipPage*PAGE_SIZE,list.length)} of ${list.length}</span><div class="page-buttons"><button class="btn btn-secondary btn-sm" ${shipPage<=1?'disabled':''} onclick="shipPage--;renderShipping()">&#8592; Prev</button><button class="btn btn-secondary btn-sm" ${shipPage>=tp?'disabled':''} onclick="shipPage++;renderShipping()">Next &#8594;</button></div></div>`;
+};
+renderDashboard=function(){
+  populateDashFilter();
+  const filteredOrders=getFilteredOrders();
+  const now=new Date();const ps=new Date(now);if(dashPeriod==='weekly')ps.setDate(now.getDate()-7);else ps.setMonth(now.getMonth()-1);
+  const pvs=new Date(ps);if(dashPeriod==='weekly')pvs.setDate(pvs.getDate()-7);else pvs.setMonth(pvs.getMonth()-1);
+  const po=filteredOrders.filter(o=>o.orderDate&&new Date(o.orderDate)>=ps);const pvo=filteredOrders.filter(o=>o.orderDate&&new Date(o.orderDate)>=pvs&&new Date(o.orderDate)<ps);
+  const pr=po.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);const pvr=pvo.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);
+  const avg=po.length?pr/po.length:0;const ot=pvo.length?((po.length-pvo.length)/pvo.length*100):0;const rt=pvr?((pr-pvr)/pvr*100):0;
+  const th=(v)=>v>=0?`<span class="trend-up">+${v.toFixed(1)}%</span>`:`<span class="trend-down">${v.toFixed(1)}%</span>`;
+  const pl=dashPeriod==='weekly'?'This Week':'This Month';
+  const periodLabel=dashFilter?(dashFilter.type==='month'?new Date(dashFilter.year,dashFilter.month,1).toLocaleString('en-US',{month:'long',year:'numeric'}):`Week ${dashFilter.week}, ${dashFilter.year}`):'';
+  document.getElementById('dash-stats').innerHTML=`<div class="stats-row"><div class="stat-card sc-received"><div class="value">${filteredOrders.length}</div><div class="label">${dashFilter?periodLabel+' Orders':pl+' Orders'} ${pvo.length&&!dashFilter?th(ot):''}</div></div><div class="stat-card sc-shipped"><div class="value">$${fmt(pr)}</div><div class="label">${dashFilter?periodLabel+' Revenue':pl+' Revenue'} ${pvr&&!dashFilter?th(rt):''}</div></div><div class="stat-card sc-approved"><div class="value">$${fmt(avg)}</div><div class="label">Avg Order Value</div></div><div class="stat-card sc-delivered"><div class="value">${filteredOrders.filter(o=>o.actualDeliveryDate).length}</div><div class="label">Delivered</div></div></div>`;
+  Object.values(charts).forEach(c=>c.destroy());charts={};const tb=getTimeBuckets(dashPeriod);
+  const obt=tb.map(b=>filteredOrders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b)).length);
+  charts.ordersTime=new Chart(document.getElementById('chartOrdersTime'),{type:'bar',data:{labels:tb.map(b=>b.label),datasets:[{label:'Orders',data:obt,backgroundColor:'#6366f1',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
+  const rbt=tb.map(b=>filteredOrders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b)).reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0));
+  charts.revenueTime=new Chart(document.getElementById('chartRevenueTime'),{type:'line',data:{labels:tb.map(b=>b.label),datasets:[{label:'Revenue',data:rbt,borderColor:'#10b981',backgroundColor:'rgba(16,185,129,0.1)',fill:true,tension:0.3,pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+  const sd=STATUSES.map(s=>filteredOrders.filter(o=>o.status===s).length);
+  charts.statusDist=new Chart(document.getElementById('chartStatusDist'),{type:'doughnut',data:{labels:STATUSES,datasets:[{data:sd,backgroundColor:STATUS_COLORS}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}});
+  const custRev={};filteredOrders.forEach(o=>{if(o.customerName){custRev[o.customerName]=(custRev[o.customerName]||0)+(parseFloat(o.totalValue)||0);}});const topCust=Object.entries(custRev).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  charts.topCustomers=new Chart(document.getElementById('chartTopCustomers'),{type:'bar',data:{labels:topCust.map(c=>c[0]),datasets:[{label:'Revenue',data:topCust.map(c=>c[1]),backgroundColor:'#8b5cf6',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+  document.getElementById('reportTitle').textContent=dashPeriod==='weekly'?'Weekly Breakdown':'Monthly Breakdown';
+  let tbl=`<table class="report-table"><thead><tr><th>Period</th><th>Orders</th><th>Revenue</th><th>Avg Value</th><th>Shipped</th><th>Delivered</th></tr></thead><tbody>`;
+  tb.forEach(b=>{const bo=filteredOrders.filter(o=>o.orderDate&&isInBucket(o.orderDate,b));const br=bo.reduce((s,o)=>s+(parseFloat(o.totalValue)||0),0);const ba=bo.length?br/bo.length:0;const bs=bo.filter(o=>o.actualShipDate).length;const bd=bo.filter(o=>o.actualDeliveryDate).length;tbl+=`<tr><td style="font-weight:600">${b.label}</td><td>${bo.length}</td><td>$${fmt(br)}</td><td>$${fmt(ba)}</td><td>${bs}</td><td>${bd}</td></tr>`;});
+  tbl+='</tbody></table>';document.getElementById('reportTable').innerHTML=tbl;
+};
+document.querySelectorAll('.top-tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.top-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));tab.classList.add('active');document.getElementById('tab-'+tab.dataset.tab).classList.add('active');if(tab.dataset.tab==='dashboard'){populateDashFilter();renderDashboard();}if(tab.dataset.tab==='refdata')renderRefData();});});
+load();
+updateDataLists();
+populateFilterDropdowns();
+renderOrders();
+renderShipping();
 </script>
 </body>
 </html>
